@@ -13,12 +13,13 @@ Every task: `ruff check . && pytest` passes, plus its manual check.
 - [ ] Tests pass. `aja collect` on the live README; owner reviews the queue and SKIPPED reasons
 
 ## Phase 2: Brains (auto mode OK, stubbed LLM in tests)
-- [ ] T4 JD fetch (Greenhouse/Lever/Workday public JSON) + Sonnet 5.5 fit screen (cached resume, structured output, at most once per job)
+- [ ] T4 JD fetch (Greenhouse/Lever/Workday public JSON) + Sonnet 5.5 fit screen (verdict strong/ok/stretch/mismatch, skip only `fit_skip` verdicts, score for ordering; cached resume, at most once per job)
 - [ ] T5 Answer resolver + D1 gate: profile → preferences → bank → LLM; sponsorship/auth always from profile (test-enforced)
 - [ ] T6 Answer writer: cover letters and "why us" grounded in resume + JD; `confident:false` when facts are missing
 
 ### Checkpoint B
 - [ ] Owner reads 5 generated cover letters / "why us" answers and approves the tone
+- [ ] Owner reviews fit verdicts for ~20 real jobs (every `mismatch` included) and confirms `fit_skip`
 
 ## Owner prerequisites (before Phase 3)
 - [ ] Resume PDF + filled `~/.auto-job-applier/profile.yaml`

@@ -19,6 +19,7 @@ except for that doc.
 | D6 | Salary (required only) | Claude's `web_search` server tool → company and role range (levels.fyi, Reddit), cached per company+level. Answer at the upper-middle of the range with a $120k floor. |
 | D7 | LLM | Claude Sonnet 5.5 (`claude-sonnet-5-5`). The resume and profile go in a cached system prompt, and structured outputs are used for every decision. About $7–10 a week. |
 | D8 | Jobright | Read it in the same persistent browser profile, like a human visit (Liked list + >80% match), twice a day. No token scraping. |
+| D9 | Fit rule | The LLM returns a verdict (`strong` / `ok` / `stretch` / `mismatch`) plus a 0–100 score, matched keywords and a reason. Only verdicts in `settings.fit_skip` (default `[mismatch]`) → SKIPPED(fit). The score only orders the queue and never decides a skip. Calibrated at Checkpoint B on ~20 real jobs. |
 
 ## Architecture
 
@@ -117,9 +118,10 @@ is `ruff check . && pytest`, plus the manual check listed.
 ### Phase 2: Brains (auto mode OK, stubbed LLM in tests)
 **T4 Job description fetch + LLM fit screen** (M). Files: `jd_fetch.py`, `llm.py`, `screen.py`
 - Job description text from the Greenhouse, Lever and Workday public JSON endpoints
-- Fit result `{score, matched_keywords, reason}` via structured output on Sonnet 5.5, with the
-  resume in a cached system prompt
-- Below the threshold → SKIPPED(fit). The fit check runs at most once per job
+- Fit result `{verdict, score, matched_keywords, reason}` via structured output on Sonnet 5.5,
+  with the resume in a cached system prompt. The prompt defines each verdict (D9)
+- Verdict in `settings.fit_skip` (default `[mismatch]`) → SKIPPED(fit). The score only orders the
+  queue. The fit check runs at most once per job
 - *Manual:* fit reasons for 10 real jobs read correctly
 
 **T5 Answer resolver + gate** (M). Files: `answers/resolver.py`, `answers/bank.py`, `models.py`
@@ -134,6 +136,8 @@ is `ruff check . && pytest`, plus the manual check listed.
 - The LLM marks `confident:false` when it would need facts that aren't in the resume
 
 ### Checkpoint B: the owner reads 5 generated cover letters and "why us" answers and approves the tone
+The owner also reviews fit verdicts and reasons for ~20 real jobs, every `mismatch` included, and
+adjusts `fit_skip` if needed (D9).
 
 ### Phase 3: Real sites (supervised, shadow mode forced on)
 **T11 Jobright collector** (M), moved up at Checkpoint A because Jobright is the main source of
