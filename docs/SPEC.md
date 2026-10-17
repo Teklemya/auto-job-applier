@@ -31,10 +31,13 @@ almost no screen time spent applying. The goal is interview flow, for practice a
 - **R6** Location priority: remote > KC metro on-site/hybrid > **any company** in a major US
   tech hub (owner-editable city list) > bare "United States" (location unknown). Anything else,
   including non-US, is skipped.
-- **R7** Never apply to the same company + role twice, including across sources.
+- **R7** Never apply to the same company + role twice, including across sources. A fillable
+  posting takes the role over from an unsupported-site (MANUAL) copy.
 - **R8** LLM fit check (resume keywords vs. job description) with a score and a reason. Below
   the threshold → skip.
-- **R9** Skipped and MANUAL jobs are recorded with a reason, never silently dropped.
+- **R9** Skipped and MANUAL jobs are recorded with a reason, never silently dropped. Jobs not yet
+  in flight are re-screened when their flags or location change, and postings that vanish from
+  the source (closed) are retired as SKIPPED. An empty parse is an error, never "all closed".
 
 ### Answer
 - **R10** Resolution order for every form field: profile → preferences → answer bank → LLM.

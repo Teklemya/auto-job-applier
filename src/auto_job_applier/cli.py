@@ -68,18 +68,30 @@ def collect(
     ] = None,
 ) -> None:
     """Fetch the SimplifyJobs README and add its open SWE roles to the queue."""
-    markdown = file.read_text() if file else simplify.fetch_readme()
-    jobs = simplify.parse_simplify(markdown)
     try:
         targeting = load_targeting(paths.profile_path())
+        markdown = file.read_text() if file else simplify.fetch_readme()
     except ProfileError as e:
         typer.echo(str(e), err=True)
         raise typer.Exit(1) from e
+    except OSError as e:  # URLError, timeouts, unreadable --file
+        typer.echo(f"Could not fetch SimplifyJobs README: {e}", err=True)
+        raise typer.Exit(1) from e
+    jobs = simplify.parse_simplify(markdown)
+    if not jobs:
+        # Never treat an empty parse as "everything closed": the format probably changed.
+        typer.echo(
+            "Parsed 0 roles from SimplifyJobs; the README format may have changed.", err=True
+        )
+        raise typer.Exit(1)
     store = _store()
     inserted, updated = store.upsert_many(jobs)
+    retired = store.retire_missing("simplify", {j.url for j in jobs})
     counts = screen_new(store, targeting)
     store.close()
     typer.echo(f"SimplifyJobs: {len(jobs)} open SWE roles ({inserted} new, {updated} updated)")
+    if retired:
+        typer.echo(f"Retired {retired} postings no longer listed")
     if counts:
         summary = ", ".join(f"{n} {s}" for s, n in sorted(counts.items()))
         typer.echo(f"Screened {sum(counts.values())}: {summary}")

@@ -65,3 +65,37 @@ def test_collect_screens_new_jobs(aja_home):
     assert "Screened 14:" in result.output
     pending = runner.invoke(app, ["list", "--status", "pending"])
     assert "NVIDIA" in pending.output  # 🔥 in Santa Clara → big-hub tier
+
+
+def test_collect_fails_loudly_when_nothing_parses(aja_home, tmp_path):
+    empty = tmp_path / "README.md"
+    empty.write_text("## Renamed Section\n<table></table>\n")
+    result = runner.invoke(app, ["collect", "--file", str(empty)])
+    assert result.exit_code == 1
+    assert "0 roles" in result.output
+
+
+def test_collect_reports_network_errors(aja_home, monkeypatch):
+    import urllib.error
+
+    from auto_job_applier.sources import simplify
+
+    def boom(*a, **k):
+        raise urllib.error.URLError("no network")
+
+    monkeypatch.setattr(simplify, "fetch_readme", boom)
+    result = runner.invoke(app, ["collect"])
+    assert result.exit_code == 1
+    assert "Could not fetch" in result.output
+    assert "Traceback" not in result.output
+
+
+def test_collect_retires_postings_that_disappeared(aja_home, tmp_path):
+    readme = (FIXTURES / "simplify_readme.md").read_text()
+    runner.invoke(app, ["collect", "--file", str(FIXTURES / "simplify_readme.md")])
+    # Drop the NVIDIA rows, as if they closed (🔒 rows carry no link, so they just vanish)
+    trimmed = tmp_path / "README.md"
+    trimmed.write_text(readme.replace("nvidia.wd5.myworkdayjobs.com", "closed.invalid"))
+    result = runner.invoke(app, ["collect", "--file", str(trimmed)])
+    assert result.exit_code == 0, result.output
+    assert "no longer listed" in result.output

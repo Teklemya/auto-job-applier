@@ -13,6 +13,9 @@ from pathlib import Path
 from .models import ATS, Job, Status, Tier
 
 _STATUSES = ", ".join(f"'{s}'" for s in Status)
+# Not yet in flight: safe to re-screen when the posting's facts change.
+_REOPENABLE = (Status.PENDING, Status.MANUAL, Status.SKIPPED)
+RETIRED_REASON = "no longer listed (closed)"
 
 SCHEMA = f"""
 CREATE TABLE IF NOT EXISTS jobs (
@@ -79,16 +82,19 @@ class JobStore:
         self._conn.close()
 
     def upsert_many(self, jobs: Iterable[Job]) -> tuple[int, int]:
-        """Insert new jobs; refresh metadata of known URLs without touching status.
+        """Insert new jobs; refresh metadata of known URLs.
 
-        Returns (inserted, updated).
+        Status is kept, except that a job not yet in flight (PENDING, MANUAL, SKIPPED) whose
+        flags or location changed is reopened as NEW so screening sees the new facts. A retired
+        posting that is listed again is reopened too. Returns (inserted, updated).
         """
         inserted = updated = 0
         now = _now()
         with self._conn:
             for job in jobs:
                 known = self._conn.execute(
-                    "SELECT 1 FROM jobs WHERE url = ?", (job.url,)
+                    "SELECT id, status, reason, flags, location FROM jobs WHERE url = ?",
+                    (job.url,),
                 ).fetchone()
                 self._conn.execute(
                     """
@@ -116,11 +122,38 @@ class JobStore:
                         now,
                     ),
                 )
-                if known:
-                    updated += 1
-                else:
+                if known is None:
                     inserted += 1
+                    continue
+                updated += 1
+                changed = (
+                    known["flags"] != json.dumps(job.flags) or known["location"] != job.location
+                )
+                relisted = known["reason"] == RETIRED_REASON
+                if Status(known["status"]) in _REOPENABLE and (changed or relisted):
+                    why = "relisted" if relisted else "flags or location changed: re-screen"
+                    self._write_status(known["id"], known["status"], Status.NEW, why, None, now)
         return inserted, updated
+
+    def retire_missing(self, source: str, seen_urls: set[str]) -> int:
+        """Mark not-yet-applied jobs from `source` that are no longer listed as SKIPPED.
+
+        Closed SimplifyJobs rows lose their link, so a closed posting simply disappears.
+        """
+        now = _now()
+        retired = 0
+        with self._conn:
+            rows = self._conn.execute(
+                "SELECT id, url, status FROM jobs WHERE source = ? AND status IN (?, ?, ?)",
+                (source, Status.NEW.value, Status.PENDING.value, Status.MANUAL.value),
+            ).fetchall()
+            for row in rows:
+                if row["url"] not in seen_urls:
+                    self._write_status(
+                        row["id"], row["status"], Status.SKIPPED, RETIRED_REASON, None, now
+                    )
+                    retired += 1
+        return retired
 
     def get(self, job_id: int) -> Job | None:
         row = self._conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
@@ -137,7 +170,7 @@ class JobStore:
             sql += " AND ats = ?"
             args.append(ats.value)
         sql += " ORDER BY id"
-        if limit:
+        if limit is not None:
             sql += " LIMIT ?"
             args.append(limit)
         return [_to_job(r) for r in self._conn.execute(sql, args)]
@@ -150,17 +183,28 @@ class JobStore:
             row = self._conn.execute("SELECT status FROM jobs WHERE id = ?", (job_id,)).fetchone()
             if row is None:
                 raise KeyError(f"no job with id {job_id}")
-            now = _now()
-            self._conn.execute(
-                "UPDATE jobs SET status = ?, reason = ?, tier = COALESCE(?, tier), updated_at = ?"
-                " WHERE id = ?",
-                (status.value, reason, tier.value if tier else None, now, job_id),
-            )
-            self._conn.execute(
-                "INSERT INTO events (job_id, from_status, to_status, message, at)"
-                " VALUES (?, ?, ?, ?, ?)",
-                (job_id, row["status"], status.value, reason, now),
-            )
+            self._write_status(job_id, row["status"], status, reason, tier, _now())
+
+    def _write_status(
+        self,
+        job_id: int,
+        from_status: str,
+        status: Status,
+        reason: str | None,
+        tier: Tier | None,
+        now: str,
+    ) -> None:
+        """Status update + audit event. Caller owns the transaction."""
+        self._conn.execute(
+            "UPDATE jobs SET status = ?, reason = ?, tier = COALESCE(?, tier), updated_at = ?"
+            " WHERE id = ?",
+            (status.value, reason, tier.value if tier else None, now, job_id),
+        )
+        self._conn.execute(
+            "INSERT INTO events (job_id, from_status, to_status, message, at)"
+            " VALUES (?, ?, ?, ?, ?)",
+            (job_id, from_status, status.value, reason, now),
+        )
 
     def events(self, job_id: int) -> list[sqlite3.Row]:
         return self._conn.execute(

@@ -93,3 +93,18 @@ def test_counts_groups_by_ats_and_status(store):
         ]
     )
     assert store.counts() == {("workday", "NEW"): 2, ("manual", "NEW"): 1}
+
+
+def test_set_status_without_tier_keeps_the_tier(store):
+    from auto_job_applier.models import Tier
+
+    store.upsert_many([make_job()])
+    [job] = store.list()
+    store.set_status(job.id, Status.PENDING, tier=Tier.HUB)
+    store.set_status(job.id, Status.STAGED, "draft")
+    assert store.get(job.id).tier is Tier.HUB
+
+
+def test_list_limit_zero_returns_nothing(store):
+    store.upsert_many([make_job()])
+    assert store.list(limit=0) == []

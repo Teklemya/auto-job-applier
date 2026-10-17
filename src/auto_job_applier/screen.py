@@ -6,8 +6,8 @@ The LLM fit check (R8) slots in after these rules in T4.
 import re
 from collections import Counter
 from dataclasses import dataclass
-from urllib.parse import urlsplit
 
+from . import geo
 from .models import ATS, Job, Status, Tier
 from .profile import Targeting
 from .store import JobStore
@@ -22,13 +22,6 @@ _HIGH_LEVEL = re.compile(r"\b(engineer|developer|sde|swe)\s+(iii|iv|v|[3-9])\b",
 _EARLY_CAREER = re.compile(
     r"new grad|new college grad|entry[- ]level|early career|junior|university grad", re.I
 )
-_NON_US = re.compile(
-    r"\b(canada|uk|united kingdom|london|india|germany|ireland|mexico|brazil|poland|israel|"
-    r"singapore|japan|china|australia|netherlands|france|spain|toronto|vancouver|bc|ontario|"
-    r"europe|emea|apac|taiwan|korea)\b",
-    re.I,
-)
-_US_UNSPECIFIED = {"united states", "usa", "us"}
 _FLAG_SKIPS = {
     "no_sponsorship": "no sponsorship (🛂)",
     "us_citizenship": "citizenship required (🇺🇸)",
@@ -45,34 +38,20 @@ class Verdict:
     tier: Tier | None = None
 
 
-def _matches_any(loc: str, names: list[str]) -> bool:
-    city = loc.split(",")[0].strip().lower()
-    for n in names:
-        if len(n) <= 3:
-            if city == n.lower():
-                return True
-        elif re.search(rf"(?<!\w){re.escape(n)}(?!\w)", loc, re.I):
-            return True
-    return False
-
-
 def _location_tier(job: Job, t: Targeting) -> Tier | None:
-    locations = [loc for loc in job.location.split("; ") if loc]
+    """Best tier across the job's locations; None if no location is targeted."""
     tiers = []
-    for loc in locations:
-        if _NON_US.search(loc):
-            continue
-        if "remote" in loc.lower():
+    for loc in filter(None, job.location.split("; ")):
+        if geo.is_remote_us(loc):
             tiers.append(Tier.REMOTE)
-        elif _matches_any(loc, t.kc_metro):
+        elif any(geo.place_matches(loc, place) for place in t.kc_metro):
             tiers.append(Tier.KC_METRO)
-        elif _matches_any(loc, t.hubs):
+        elif any(geo.place_matches(loc, place) for place in t.hubs):
             tiers.append(Tier.HUB)
-        elif loc.strip().lower() in _US_UNSPECIFIED:
+        elif geo.is_us_country(loc):
             tiers.append(Tier.US_UNSPECIFIED)
-    # Workday often encodes remote only in the URL, e.g. ".../job/Remote-California/..."
-    all_us = locations and not any(_NON_US.search(loc) for loc in locations)
-    if all_us and "remote" in urlsplit(job.url).path.lower():
+    # Simplify sometimes lists only a state ("California") for Workday remote roles.
+    if job.ats is ATS.WORKDAY and geo.workday_remote_us(job.url):
         tiers.append(Tier.REMOTE)
     return min(tiers) if tiers else None
 
@@ -100,17 +79,31 @@ def dedupe_key(job: Job) -> tuple[str, str]:
 
 
 def screen_new(store: JobStore, t: Targeting) -> dict[Status, int]:
-    """Screen every NEW job. Returns counts per resulting status."""
-    claimed = {dedupe_key(j): j.id for s in _CLAIMED for j in store.list(status=s)}
+    """Screen every NEW job. Returns counts per resulting status.
+
+    One company+role is applied to once. A fillable posting takes the role over from a MANUAL
+    (unsupported site) one; otherwise the first claim wins.
+    """
+    claimed = {dedupe_key(j): (j.id, j.status) for s in _CLAIMED for j in store.list(status=s)}
     counts: Counter[Status] = Counter()
+    screened_now: set[int] = set()
     for job in store.list(status=Status.NEW):
         v = hard_filter(job, t)
         if v.status in (Status.PENDING, Status.MANUAL):
             key = dedupe_key(job)
-            if key in claimed:
-                v = Verdict(Status.SKIPPED, f"duplicate of #{claimed[key]}", v.tier)
+            if key not in claimed:
+                claimed[key] = (job.id, v.status)
             else:
-                claimed[key] = job.id
+                owner_id, owner_status = claimed[key]
+                if owner_status is Status.MANUAL and v.status is Status.PENDING:
+                    store.set_status(owner_id, Status.SKIPPED, f"duplicate of #{job.id}")
+                    if owner_id in screened_now:
+                        counts[Status.MANUAL] -= 1
+                        counts[Status.SKIPPED] += 1
+                    claimed[key] = (job.id, v.status)
+                else:
+                    v = Verdict(Status.SKIPPED, f"duplicate of #{owner_id}", v.tier)
         store.set_status(job.id, v.status, v.reason, tier=v.tier)
         counts[v.status] += 1
-    return dict(counts)
+        screened_now.add(job.id)
+    return {s: n for s, n in counts.items() if n}

@@ -54,10 +54,32 @@ def test_load_targeting_works_without_a_complete_profile(write_profile):
 
     t = load_targeting(write_profile({"targeting": {"hubs": ["Omaha"]}}))
     assert t.hubs == ["Omaha"]
-    assert "Olathe" in t.kc_metro  # defaults kept
+    assert "Olathe, KS" in t.kc_metro  # defaults kept
 
 
 def test_load_targeting_defaults_when_profile_missing(tmp_path):
     from auto_job_applier.profile import load_targeting
 
-    assert "Austin" in load_targeting(tmp_path / "missing.yaml").hubs
+    assert "Austin, TX" in load_targeting(tmp_path / "missing.yaml").hubs
+
+
+@pytest.mark.parametrize("text", ["- a\n- b\n", "just a string\n"])
+def test_non_mapping_yaml_is_a_clear_error(tmp_path, text):
+    from auto_job_applier.profile import load_targeting
+
+    path = tmp_path / "profile.yaml"
+    path.write_text(text)
+    with pytest.raises(ProfileError, match="mapping"):
+        load_targeting(path)
+    with pytest.raises(ProfileError, match="mapping"):
+        load_profile(path)
+
+
+def test_relative_resume_path_resolves_under_aja_home(
+    aja_home, example_profile_data, write_profile
+):
+    aja_home.mkdir(parents=True)
+    (aja_home / "resume.pdf").write_bytes(b"%PDF")
+    example_profile_data["resume_path"] = "resume.pdf"
+    profile = load_profile(write_profile(example_profile_data))
+    assert profile.resume_path == aja_home / "resume.pdf"

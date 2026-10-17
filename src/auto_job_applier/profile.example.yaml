@@ -57,8 +57,8 @@ preferences:
 # Screening locations. Remote always passes. Omit a list to keep the built-in defaults
 # (see `Targeting` in profile.py); set it to replace them.
 targeting: {}
-  # kc_metro: [Kansas City, Overland Park, Olathe, ...]
-  # hubs: [SF, Seattle, NYC, Boston, Austin, Chicago, ...]   # any company in these cities
+  # kc_metro: ["Kansas City, MO", "Overland Park, KS", "Olathe, KS", ...]
+  # hubs: ["SF", "Seattle, WA", "NYC", "Boston, MA", "Austin, TX", ...]  # any company there
 
 settings:
   # Shadow mode: false = draft everything, submit nothing. Only you change this.

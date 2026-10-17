@@ -13,6 +13,7 @@ def job(role="Software Engineer I", company="Acme", location="Remote in USA", fl
         "url", f"https://boards.greenhouse.io/{company.lower()}/jobs/{abs(hash(role + location))}"
     )
     kw.setdefault("ats", ATS.GREENHOUSE)
+    kw.setdefault("source", "simplify")
     return Job(company=company, role=role, location=location, flags=list(flags), **kw)
 
 
@@ -86,6 +87,12 @@ def test_early_career_titles_are_kept(role):
         ("Vienna, VA", "Acme", [], Tier.HUB),  # DMV
         ("Seattle, WA; Remote in USA", "Acme", [], Tier.REMOTE),  # best location wins
         ("United States", "Acme", [], Tier.US_UNSPECIFIED),
+        ("Remote - US", "Acme", [], Tier.REMOTE),
+        ("Remote, California", "Acme", [], Tier.REMOTE),  # US state after "Remote"
+        ("Washington, DC", "Acme", [], Tier.HUB),
+        ("Portland, OR", "Acme", [], Tier.HUB),
+        ("Lawrence, KS", "Acme", [], Tier.KC_METRO),
+        ("Olathe", "Garmin", [], Tier.KC_METRO),  # no state given: city name is enough
     ],
 )
 def test_location_tiers(location, company, flags, tier):
@@ -102,6 +109,18 @@ def test_location_tiers(location, company, flags, tier):
         ("New Orleans, LA", "Acme", []),  # "LA" here is Louisiana, not Los Angeles
         ("Annapolis Junction, MD", "Acme", []),  # clearance-heavy NSA corridor, not DMV list
         ("O'Fallon, MO", "Mastercard", []),  # Missouri, but St. Louis, not KC
+        # Review #1: remote roles abroad must not pass as US remote
+        ("Remote - Portugal", "Acme", []),
+        ("Remote (LATAM)", "Acme", []),
+        ("Remote, Philippines", "Acme", []),
+        ("Remote - EMEA", "Acme", []),
+        # Review #4: same-named cities in other states
+        ("Lawrence, MA", "Acme", []),
+        ("Independence, OH", "Acme", []),
+        ("Portland, ME", "Acme", []),
+        ("Cambridge, UK", "Acme", []),
+        ("Arlington, TX", "Acme", []),
+        ("California", "Acme", []),  # state only, not remote
     ],
 )
 def test_location_skips(location, company, flags):
@@ -117,6 +136,31 @@ def test_remote_hint_in_workday_url():
         ats=ATS.WORKDAY,
     )
     assert hard_filter(j, T).tier is Tier.REMOTE
+
+
+def test_remote_hint_requires_workday_and_us_segment():
+    # Review #3: a "remote" slug elsewhere in the URL is not a location
+    greenhouse = job(
+        location="Lisbon, Portugal", url="https://boards.greenhouse.io/remotecom/jobs/1"
+    )
+    assert hard_filter(greenhouse, T).status is Status.SKIPPED
+    canada = job(
+        location="Toronto, ON, Canada",
+        url="https://x.wd1.myworkdayjobs.com/X/job/Remote-Canada/SWE_1",
+        ats=ATS.WORKDAY,
+    )
+    assert hard_filter(canada, T).status is Status.SKIPPED
+    title_slug = job(
+        location="Tucson, AZ",
+        url="https://x.wd1.myworkdayjobs.com/X/job/Tucson-AZ/Remote-Sensing-Software-Engineer_1",
+        ats=ATS.WORKDAY,
+    )
+    assert hard_filter(title_slug, T).status is Status.SKIPPED
+    # Jobvite also uses /job/<slug>/, but that slug is an ID, not a location
+    jobvite = job(
+        location="Tucson, AZ", url="https://jobs.jobvite.com/acme/job/Remote-USA", ats=ATS.MANUAL
+    )
+    assert hard_filter(jobvite, T).status is Status.SKIPPED
 
 
 def test_unsupported_ats_becomes_manual():
@@ -178,3 +222,92 @@ def test_dedupe_against_previously_screened_jobs(store):
     store.upsert_many([job(company="ACME", role="swe i", url="https://jobright.ai/x")])
     screen_new(store, T)
     assert [j.status for j in store.list()] == [Status.PENDING, Status.SKIPPED]
+
+
+@pytest.mark.parametrize("claimed", [Status.STAGED, Status.APPLIED, Status.FAILED, Status.MANUAL])
+def test_in_flight_and_finished_jobs_claim_their_role(store, claimed):
+    store.upsert_many([job(company="Acme", role="SWE I", url="https://a.io/1", ats=ATS.MANUAL)])
+    [first] = store.list()
+    store.set_status(first.id, claimed)
+    store.upsert_many([job(company="Acme", role="SWE I", url="https://a.io/2", ats=ATS.MANUAL)])
+    screen_new(store, T)
+    assert store.list()[1].reason == f"duplicate of #{first.id}"
+
+
+def test_manual_duplicates_are_skipped(store):
+    store.upsert_many(
+        [
+            job(
+                company="Garmin",
+                role="SWE 1",
+                location="Olathe, KS",
+                url="https://g.io/1",
+                ats=ATS.MANUAL,
+            ),
+            job(
+                company="Garmin",
+                role="SWE 1",
+                location="Olathe, KS",
+                url="https://g.io/2",
+                ats=ATS.MANUAL,
+            ),
+        ]
+    )
+    screen_new(store, T)
+    assert [j.status for j in store.list()] == [Status.MANUAL, Status.SKIPPED]
+
+
+def test_fillable_posting_takes_the_role_from_a_manual_one(store):
+    # Review #5: the auto-applyable copy must win over the unsupported-site copy
+    store.upsert_many(
+        [
+            job(company="Acme", role="SWE I", url="https://careers.acme.com/1", ats=ATS.MANUAL),
+            job(company="Acme", role="SWE I", url="https://boards.greenhouse.io/acme/jobs/2"),
+        ]
+    )
+    screen_new(store, T)
+    manual, fillable = store.list()
+    assert fillable.status is Status.PENDING
+    assert manual.status is Status.SKIPPED and manual.reason == f"duplicate of #{fillable.id}"
+
+
+# --- re-screening (review #2) -------------------------------------------------------------
+
+
+def test_queued_job_is_rescreened_when_flags_change(store):
+    store.upsert_many([job(company="Acme", role="SWE I", url="https://a.io/1")])
+    screen_new(store, T)
+    store.upsert_many(
+        [job(company="Acme", role="SWE I", url="https://a.io/1", flags=["no_sponsorship"])]
+    )
+    screen_new(store, T)
+    [j] = store.list()
+    assert j.status is Status.SKIPPED and "no sponsorship" in j.reason
+
+
+def test_skipped_job_is_rescreened_when_location_changes(store):
+    store.upsert_many([job(location="Tucson, AZ", url="https://a.io/1")])
+    screen_new(store, T)
+    store.upsert_many([job(location="Remote in USA", url="https://a.io/1")])
+    screen_new(store, T)
+    assert store.list()[0].status is Status.PENDING
+
+
+def test_in_flight_jobs_are_never_reopened(store):
+    store.upsert_many([job(url="https://a.io/1")])
+    [j] = store.list()
+    store.set_status(j.id, Status.STAGED, "draft")
+    store.upsert_many([job(url="https://a.io/1", flags=["no_sponsorship"])])
+    assert store.get(j.id).status is Status.STAGED
+
+
+def test_jobs_no_longer_listed_are_retired(store):
+    store.upsert_many([job(url="https://a.io/1"), job(url="https://a.io/2", role="SWE II")])
+    screen_new(store, T)
+    [kept, gone] = store.list()
+    store.set_status(gone.id, Status.PENDING)
+    retired = store.retire_missing("simplify", seen_urls={kept.url})
+    assert retired == 1
+    assert store.get(gone.id).status is Status.SKIPPED
+    assert store.get(gone.id).reason == "no longer listed (closed)"
+    assert store.get(kept.id).status is Status.PENDING

@@ -9,6 +9,8 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
+from . import paths
+
 DECLINE = "Decline to self-identify"
 
 
@@ -80,102 +82,52 @@ class Preferences(_Strict):
 
 
 class Targeting(_Strict):
-    """Location preferences for screening (R6). Edit freely in profile.yaml."""
+    """Location preferences for screening (R6). Edit freely in profile.yaml.
+
+    Entries are "City, ST" (the state must agree when a posting names one, so "Lawrence, MA"
+    is not "Lawrence, KS") or a bare alias like "SF" that must equal a posting's city exactly.
+    """
 
     kc_metro: list[str] = [
-        "Kansas City",
-        "Overland Park",
-        "Olathe",
-        "Lenexa",
-        "Lee's Summit",
-        "Independence",
-        "Shawnee",
-        "Leawood",
-        "Lawrence",
+        "Kansas City, MO",
+        "Kansas City, KS",
+        "Overland Park, KS",
+        "Olathe, KS",
+        "Lenexa, KS",
+        "Shawnee, KS",
+        "Leawood, KS",
+        "Lawrence, KS",
+        "Lee's Summit, MO",
+        "Independence, MO",
     ]
-    # Any company in these US tech hubs. Names of 3 letters or fewer (SF, NYC, LA) must be
-    # the whole city part of a location, so "New Orleans, LA" doesn't read as Los Angeles.
+    # Any company in these US tech hubs. Not the clearance-heavy Fort Meade / Annapolis
+    # Junction corridor in Maryland (government roles the owner skips).
     hubs: list[str] = [
         # Bay Area
-        "San Francisco",
-        "SF",
-        "Bay Area",
-        "Palo Alto",
-        "Mountain View",
-        "Sunnyvale",
-        "San Jose",
-        "Santa Clara",
-        "Cupertino",
-        "Menlo Park",
-        "Redwood City",
-        "San Mateo",
-        "Foster City",
-        "Burlingame",
-        "South San Francisco",
-        "Fremont",
-        "Milpitas",
-        "Oakland",
+        "San Francisco, CA", "SF", "Bay Area", "Palo Alto, CA", "Mountain View, CA",
+        "Sunnyvale, CA", "San Jose, CA", "Santa Clara, CA", "Cupertino, CA", "Menlo Park, CA",
+        "Redwood City, CA", "San Mateo, CA", "Foster City, CA", "Burlingame, CA",
+        "South San Francisco, CA", "Fremont, CA", "Milpitas, CA", "Oakland, CA",
         # Seattle
-        "Seattle",
-        "Bellevue",
-        "Redmond",
-        "Kirkland",
+        "Seattle, WA", "Bellevue, WA", "Redmond, WA", "Kirkland, WA",
         # New York
-        "New York",
-        "NYC",
-        "Brooklyn",
-        "Jersey City",
-        "Hoboken",
+        "New York, NY", "NYC", "New York City", "Brooklyn, NY", "Jersey City, NJ",
+        "Hoboken, NJ",
         # Boston
-        "Boston",
-        "Cambridge",
-        # DMV (not the clearance-heavy Fort Meade / Annapolis Junction corridor)
-        "Washington, DC",
-        "Arlington, VA",
-        "Alexandria",
-        "McLean",
-        "Tysons",
-        "Reston",
-        "Herndon",
-        "Vienna, VA",
-        "Fairfax",
-        "Chantilly",
-        "Bethesda",
-        "Rockville",
+        "Boston, MA", "Cambridge, MA",
+        # DMV
+        "Washington, DC", "DC", "Arlington, VA", "Alexandria, VA", "McLean, VA", "Tysons, VA",
+        "Vienna, VA", "Fairfax, VA", "Chantilly, VA", "Reston, VA", "Herndon, VA",
+        "Bethesda, MD", "Rockville, MD",
         # Other major hubs
-        "Los Angeles",
-        "LA",
-        "Santa Monica",
-        "Irvine",
-        "San Diego",
-        "Austin",
-        "Dallas",
-        "Plano",
-        "Richardson",
-        "Irving",
-        "Frisco",
-        "Houston",
-        "Chicago",
-        "Denver",
-        "Boulder",
-        "Centennial",
-        "Broomfield",
-        "Atlanta",
-        "Alpharetta",
-        "Raleigh",
-        "Durham",
-        "Charlotte",
-        "Pittsburgh",
-        "Philadelphia",
-        "Salt Lake City",
-        "Lehi",
-        "Portland",
-        "Miami",
-        "Minneapolis",
-        "Phoenix",
-        "Scottsdale",
-        "Tempe",
-    ]
+        "Los Angeles, CA", "LA", "Santa Monica, CA", "Irvine, CA", "San Diego, CA",
+        "Austin, TX", "Dallas, TX", "Plano, TX", "Richardson, TX", "Irving, TX", "Frisco, TX",
+        "Houston, TX", "Chicago, IL", "Denver, CO", "Boulder, CO", "Centennial, CO",
+        "Broomfield, CO", "Atlanta, GA", "Alpharetta, GA", "Raleigh, NC", "Durham, NC",
+        "Charlotte, NC", "Pittsburgh, PA", "Philadelphia, PA", "Salt Lake City, UT", "Lehi, UT",
+        "Portland, OR", "Miami, FL", "Minneapolis, MN", "Phoenix, AZ", "Scottsdale, AZ",
+        "Tempe, AZ",
+    ]  # fmt: skip
 
 
 class Settings(_Strict):
@@ -201,6 +153,8 @@ class Profile(_Strict):
     @classmethod
     def _resume_exists(cls, v: Path) -> Path:
         v = v.expanduser()
+        if not v.is_absolute():  # relative paths live next to profile.yaml
+            v = paths.home() / v
         if not v.is_file():
             raise ValueError(f"file not found: {v}")
         return v
@@ -212,9 +166,16 @@ class ProfileError(Exception):
 
 def _read_yaml(path: Path) -> dict:
     try:
-        return yaml.safe_load(path.read_text()) or {}
+        data = yaml.safe_load(path.read_text())
     except yaml.YAMLError as e:
         raise ProfileError(f"{path} is not valid YAML: {e}") from e
+    if data is None:
+        return {}
+    if not isinstance(data, dict):
+        raise ProfileError(
+            f"{path} must be a YAML mapping (key: value), not a {type(data).__name__}"
+        )
+    return data
 
 
 def _validate[M: BaseModel](model: type[M], data: dict, path: Path, prefix: str = "") -> M:
