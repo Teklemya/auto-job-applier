@@ -96,7 +96,11 @@ class Targeting(_Strict):
     ]
     hubs: list[str] = [
         "San Francisco",
+        "SF",
         "Bay Area",
+        "Santa Clara",
+        "Cupertino",
+        "Redwood City",
         "Palo Alto",
         "Mountain View",
         "Sunnyvale",
@@ -149,18 +153,32 @@ class ProfileError(Exception):
     pass
 
 
-def load_profile(path: Path) -> Profile:
-    if not path.is_file():
-        raise ProfileError(f"Profile not found: {path} (run `aja init`)")
+def _read_yaml(path: Path) -> dict:
     try:
-        data = yaml.safe_load(path.read_text()) or {}
+        return yaml.safe_load(path.read_text()) or {}
     except yaml.YAMLError as e:
         raise ProfileError(f"{path} is not valid YAML: {e}") from e
+
+
+def _validate[M: BaseModel](model: type[M], data: dict, path: Path, prefix: str = "") -> M:
     try:
-        return Profile.model_validate(data)
+        return model.model_validate(data)
     except ValidationError as e:
         lines = [f"Invalid profile {path}:"]
         for err in e.errors():
             loc = ".".join(str(p) for p in err["loc"])
-            lines.append(f"  {loc}: {err['msg']}")
+            lines.append(f"  {prefix}{loc}: {err['msg']}")
         raise ProfileError("\n".join(lines)) from e
+
+
+def load_profile(path: Path) -> Profile:
+    if not path.is_file():
+        raise ProfileError(f"Profile not found: {path} (run `aja init`)")
+    return _validate(Profile, _read_yaml(path), path)
+
+
+def load_targeting(path: Path) -> Targeting:
+    """Just the screening preferences, so collecting works before the profile is complete."""
+    if not path.is_file():
+        return Targeting()
+    return _validate(Targeting, _read_yaml(path).get("targeting") or {}, path, "targeting.")

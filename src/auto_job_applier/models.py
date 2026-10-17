@@ -12,6 +12,15 @@ class ATS(StrEnum):
     MANUAL = "manual"  # any site v1 can't fill; listed for the owner to apply by hand
 
 
+class Tier(StrEnum):
+    """Location priority (R6), best first. Values sort in priority order."""
+
+    REMOTE = "1-remote"
+    KC_METRO = "2-kc-metro"
+    BIG_HUB = "3-big-hub"
+    US_UNSPECIFIED = "4-us-unspecified"  # bare "United States": location unknown
+
+
 class Status(StrEnum):
     NEW = "NEW"  # collected, not screened yet
     SKIPPED = "SKIPPED"  # filtered out; `reason` says why
@@ -34,6 +43,7 @@ class Job:
     age: str = ""  # as listed by the source, e.g. "3d"
     source: str = ""  # "simplify" | "jobright"
     reason: str | None = None  # why SKIPPED / STAGED / FAILED
+    tier: Tier | None = None  # set by screening
     id: int | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None

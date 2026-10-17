@@ -10,7 +10,7 @@ from collections.abc import Iterable
 from datetime import UTC, datetime
 from pathlib import Path
 
-from .models import ATS, Job, Status
+from .models import ATS, Job, Status, Tier
 
 _STATUSES = ", ".join(f"'{s}'" for s in Status)
 
@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     age         TEXT NOT NULL DEFAULT '',
     source      TEXT NOT NULL DEFAULT '',
     reason      TEXT,
+    tier        TEXT,
     created_at  TEXT NOT NULL,
     updated_at  TEXT NOT NULL
 );
@@ -60,6 +61,7 @@ def _to_job(row: sqlite3.Row) -> Job:
         age=row["age"],
         source=row["source"],
         reason=row["reason"],
+        tier=Tier(row["tier"]) if row["tier"] else None,
         created_at=datetime.fromisoformat(row["created_at"]),
         updated_at=datetime.fromisoformat(row["updated_at"]),
     )
@@ -140,15 +142,19 @@ class JobStore:
             args.append(limit)
         return [_to_job(r) for r in self._conn.execute(sql, args)]
 
-    def set_status(self, job_id: int, status: Status, reason: str | None = None) -> None:
+    def set_status(
+        self, job_id: int, status: Status, reason: str | None = None, tier: Tier | None = None
+    ) -> None:
+        """Change status (and reason); `tier` is only set when given."""
         with self._conn:
             row = self._conn.execute("SELECT status FROM jobs WHERE id = ?", (job_id,)).fetchone()
             if row is None:
                 raise KeyError(f"no job with id {job_id}")
             now = _now()
             self._conn.execute(
-                "UPDATE jobs SET status = ?, reason = ?, updated_at = ? WHERE id = ?",
-                (status.value, reason, now, job_id),
+                "UPDATE jobs SET status = ?, reason = ?, tier = COALESCE(?, tier), updated_at = ?"
+                " WHERE id = ?",
+                (status.value, reason, tier.value if tier else None, now, job_id),
             )
             self._conn.execute(
                 "INSERT INTO events (job_id, from_status, to_status, message, at)"

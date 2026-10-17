@@ -7,7 +7,7 @@ Every task: `ruff check . && pytest` passes, plus its manual check.
 ## Phase 1: Foundation (auto mode OK, no real sites)
 - [x] T1 Scaffold + store + profile: `aja init`, profile validation errors, store transitions log events
 - [x] T2 SimplifyJobs collector: HTML-table parser (SWE section, `↳`, 🔒, flags), canonical URLs, ATS detection, idempotent ingest
-- [ ] T3 Hard filters + dedupe: 🛂/🇺🇸/senior+ → SKIPPED(reason), location priority, cross-source dedupe
+- [x] T3 Hard filters + dedupe: 🛂/🇺🇸/senior+ → SKIPPED(reason), location priority, cross-source dedupe
 
 ### Checkpoint A
 - [ ] Tests pass. `aja collect` on the live README; owner reviews the queue and SKIPPED reasons

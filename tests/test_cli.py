@@ -57,3 +57,11 @@ def test_collect_from_file_is_idempotent(aja_home):
     listed = runner.invoke(app, ["list", "--ats", "workday"])
     assert listed.exit_code == 0, listed.output
     assert "Dexcom" in listed.output and "Axon" not in listed.output
+
+
+def test_collect_screens_new_jobs(aja_home):
+    result = runner.invoke(app, ["collect", "--file", str(FIXTURES / "simplify_readme.md")])
+    assert result.exit_code == 0, result.output
+    assert "Screened 14:" in result.output
+    pending = runner.invoke(app, ["list", "--status", "pending"])
+    assert "NVIDIA" in pending.output  # 🔥 in Santa Clara → big-hub tier

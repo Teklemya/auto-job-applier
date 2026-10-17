@@ -47,3 +47,17 @@ def test_unknown_keys_are_rejected(example_profile_data, write_profile):
     example_profile_data["work_authorization"]["requires_sponsership_future"] = False
     with pytest.raises(ProfileError, match="requires_sponsership_future"):
         load_profile(write_profile(example_profile_data))
+
+
+def test_load_targeting_works_without_a_complete_profile(write_profile):
+    from auto_job_applier.profile import load_targeting
+
+    t = load_targeting(write_profile({"targeting": {"big_companies": ["Stripe"]}}))
+    assert t.big_companies == ["Stripe"]
+    assert "Olathe" in t.kc_metro  # defaults kept
+
+
+def test_load_targeting_defaults_when_profile_missing(tmp_path):
+    from auto_job_applier.profile import load_targeting
+
+    assert load_targeting(tmp_path / "missing.yaml").big_companies == []

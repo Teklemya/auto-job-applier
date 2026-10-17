@@ -8,7 +8,8 @@ import typer
 
 from . import paths
 from .models import ATS, Status
-from .profile import ProfileError, load_profile
+from .profile import ProfileError, load_profile, load_targeting
+from .screen import screen_new
 from .sources import simplify
 from .store import JobStore
 
@@ -69,10 +70,19 @@ def collect(
     """Fetch the SimplifyJobs README and add its open SWE roles to the queue."""
     markdown = file.read_text() if file else simplify.fetch_readme()
     jobs = simplify.parse_simplify(markdown)
+    try:
+        targeting = load_targeting(paths.profile_path())
+    except ProfileError as e:
+        typer.echo(str(e), err=True)
+        raise typer.Exit(1) from e
     store = _store()
     inserted, updated = store.upsert_many(jobs)
+    counts = screen_new(store, targeting)
     store.close()
     typer.echo(f"SimplifyJobs: {len(jobs)} open SWE roles ({inserted} new, {updated} updated)")
+    if counts:
+        summary = ", ".join(f"{n} {s}" for s, n in sorted(counts.items()))
+        typer.echo(f"Screened {sum(counts.values())}: {summary}")
 
 
 @app.command("list")
