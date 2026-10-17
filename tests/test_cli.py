@@ -1,4 +1,5 @@
 import yaml
+from conftest import FIXTURES
 from typer.testing import CliRunner
 
 from auto_job_applier.cli import app
@@ -41,3 +42,18 @@ def test_check_passes_with_valid_profile(aja_home, example_profile_data):
     result = runner.invoke(app, ["check"])
     assert result.exit_code == 0, result.output
     assert "shadow mode" in result.output.lower()
+
+
+def test_collect_from_file_is_idempotent(aja_home):
+    readme = str(FIXTURES / "simplify_readme.md")
+    first = runner.invoke(app, ["collect", "--file", readme])
+    assert first.exit_code == 0, first.output
+    assert "14 new" in first.output
+
+    second = runner.invoke(app, ["collect", "--file", readme])
+    assert second.exit_code == 0, second.output
+    assert "0 new, 14 updated" in second.output
+
+    listed = runner.invoke(app, ["list", "--ats", "workday"])
+    assert listed.exit_code == 0, listed.output
+    assert "Dexcom" in listed.output and "Axon" not in listed.output
