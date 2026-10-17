@@ -29,6 +29,7 @@ _FLAG_SKIPS = {
 }
 # Statuses that claim a company+role, so later postings of it are duplicates.
 _CLAIMED = (Status.PENDING, Status.STAGED, Status.APPLIED, Status.FAILED, Status.MANUAL)
+_DUPLICATE_OF = re.compile(r"^duplicate of #(\d+)$")
 
 
 @dataclass(frozen=True)
@@ -78,12 +79,23 @@ def dedupe_key(job: Job) -> tuple[str, str]:
     return company, title
 
 
+def _release_orphaned_duplicates(store: JobStore) -> None:
+    """Reopen duplicates whose owner no longer claims the role (closed or screened out),
+    so the remaining posting isn't lost."""
+    claiming = {j.id for s in _CLAIMED for j in store.list(status=s)}
+    for job in store.list(status=Status.SKIPPED):
+        m = _DUPLICATE_OF.match(job.reason or "")
+        if m and int(m.group(1)) not in claiming:
+            store.set_status(job.id, Status.NEW, f"owner #{m.group(1)} no longer active: re-screen")
+
+
 def screen_new(store: JobStore, t: Targeting) -> dict[Status, int]:
     """Screen every NEW job. Returns counts per resulting status.
 
     One company+role is applied to once. A fillable posting takes the role over from a MANUAL
     (unsupported site) one; otherwise the first claim wins.
     """
+    _release_orphaned_duplicates(store)
     claimed = {dedupe_key(j): (j.id, j.status) for s in _CLAIMED for j in store.list(status=s)}
     counts: Counter[Status] = Counter()
     screened_now: set[int] = set()

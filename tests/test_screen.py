@@ -311,3 +311,71 @@ def test_jobs_no_longer_listed_are_retired(store):
     assert store.get(gone.id).status is Status.SKIPPED
     assert store.get(gone.id).reason == "no longer listed (closed)"
     assert store.get(kept.id).status is Status.PENDING
+
+
+# --- duplicates are released when their owner leaves (review 2, #1) -----------------------
+
+
+def _dexcom_pair(store):
+    # Real pattern: one Workday req per state for the same role
+    ca = job(company="Dexcom", role="SWE 1", url="https://a.io/ca")
+    oregon = job(company="Dexcom", role="SWE 1", url="https://a.io/or")
+    store.upsert_many([ca, oregon])
+    screen_new(store, T)
+    return store.list()
+
+
+def test_duplicate_is_released_when_its_owner_closes(store):
+    owner, dup = _dexcom_pair(store)
+    store.retire_missing("simplify", seen_urls={dup.url})
+    screen_new(store, T)
+    assert store.get(owner.id).status is Status.SKIPPED
+    assert store.get(dup.id).status is Status.PENDING
+
+
+def test_duplicate_is_released_when_its_owner_is_rescreened_out(store):
+    owner, dup = _dexcom_pair(store)
+    store.upsert_many(
+        [job(company="Dexcom", role="SWE 1", url=owner.url, flags=["no_sponsorship"])]
+    )
+    screen_new(store, T)
+    assert "no sponsorship" in store.get(owner.id).reason
+    assert store.get(dup.id).status is Status.PENDING
+
+
+def test_duplicate_stays_skipped_while_its_owner_is_active(store):
+    owner, dup = _dexcom_pair(store)
+    store.set_status(owner.id, Status.STAGED, "draft")
+    events_before = len(store.events(dup.id))
+    screen_new(store, T)
+    assert store.get(dup.id).reason == f"duplicate of #{owner.id}"
+    assert len(store.events(dup.id)) == events_before  # not churned through NEW
+
+
+# --- retire / relist (review 2, #2) -------------------------------------------------------
+
+
+@pytest.mark.parametrize("status", [Status.NEW, Status.PENDING, Status.MANUAL])
+def test_retire_covers_every_not_yet_applied_status(store, status):
+    store.upsert_many([job(url="https://a.io/1")])
+    [j] = store.list()
+    store.set_status(j.id, status)
+    assert store.retire_missing("simplify", seen_urls=set()) == 1
+    assert store.get(j.id).reason == "no longer listed (closed)"
+
+
+@pytest.mark.parametrize("status", [Status.STAGED, Status.APPLIED, Status.FAILED])
+def test_retire_leaves_in_flight_and_finished_jobs(store, status):
+    store.upsert_many([job(url="https://a.io/1")])
+    [j] = store.list()
+    store.set_status(j.id, status)
+    assert store.retire_missing("simplify", seen_urls=set()) == 0
+
+
+def test_relisted_posting_is_reopened(store):
+    store.upsert_many([job(url="https://a.io/1")])
+    screen_new(store, T)
+    store.retire_missing("simplify", seen_urls=set())
+    store.upsert_many([job(url="https://a.io/1")])  # same facts, listed again
+    screen_new(store, T)
+    assert store.list()[0].status is Status.PENDING
