@@ -206,3 +206,12 @@ def test_limit_caps_new_checks(store, profile):
     run = fit.screen_fit(store, profile, model, fetch=lambda j: JD_PYTHON, limit=2)
     assert run.counts == {"checked": 2}
     assert len(model.calls) == 2
+
+
+def test_bad_llm_output_skips_that_job_and_continues(store, profile):
+    jobs = pending(store, 2)
+    model = FakeLLM(llm.LLMError("unusable output"), answer("ok"))
+    run = fit.screen_fit(store, profile, model, fetch=lambda j: JD_PYTHON)
+    assert run.counts == {"errors": 1, "checked": 1}
+    assert store.get_fit(jobs[0].id) is None  # retried next run
+    assert store.get_fit(jobs[1].id).verdict == "ok"

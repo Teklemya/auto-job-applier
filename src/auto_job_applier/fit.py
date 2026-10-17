@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from pydantic import BaseModel, Field
 
 from . import jd_fetch
-from .llm import LLM, QuotaExhausted
+from .llm import LLM, LLMError, QuotaExhausted
 from .models import Fit, Job, Status
 from .profile import FitVerdict, Profile
 from .store import JobStore
@@ -122,6 +122,9 @@ def screen_fit(
                 except QuotaExhausted as e:
                     run.stopped = str(e)
                     break
+                except LLMError:
+                    run.counts["errors"] += 1  # retried on the next run
+                    continue
             store.save_fit(job.id, fit)
             run.counts["checked" if fit.verdict else "unchecked"] += 1
             run.results.append((job, fit))

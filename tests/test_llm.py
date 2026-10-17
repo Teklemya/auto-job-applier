@@ -171,3 +171,11 @@ def test_missing_api_key_is_a_clear_error(monkeypatch):
     monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
     with pytest.raises(llm.LLMError, match="GEMINI_API_KEY"):
         llm.GeminiProvider(model="m")
+
+
+@pytest.mark.parametrize("code", [500, 503, 504])
+def test_gemini_overload_is_rate_limited(code):
+    err = errors.ServerError(code, {"error": {"code": code, "message": "high demand"}})
+    g = llm.GeminiProvider(model="m", client=_Client(err))
+    with pytest.raises(llm.RateLimited):
+        g.generate(system="s", prompt="p", schema=Answer)

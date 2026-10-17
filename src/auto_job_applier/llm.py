@@ -26,7 +26,7 @@ class LLMError(Exception):
 
 
 class RateLimited(Exception):
-    """The provider answered 429."""
+    """The provider answered 429, or 5xx (overloaded). Worth one retry after a backoff."""
 
 
 class QuotaExhausted(Exception):
@@ -79,8 +79,8 @@ class GeminiProvider:
                 model=self.model, contents=[*contents, prompt], config=config
             )
         except errors.APIError as e:
-            if e.code == 429:
-                raise RateLimited(str(e)) from e
+            if e.code == 429 or e.code >= 500:
+                raise RateLimited(f"Gemini {e.code}: {e.message or e.status}") from e
             raise LLMError(f"Gemini error {e.code}: {e}") from e
         if isinstance(resp.parsed, schema):
             return resp.parsed
@@ -120,12 +120,12 @@ class BudgetedLLM:
             self._last = self.clock()
             try:
                 result = self.provider.generate(**kw)
-            except RateLimited:
+            except RateLimited as e:
                 self.store.count_llm_call(day, rate_limited=True)
                 if attempt == 0:
                     self.sleep(self.backoff)
                     continue
-                raise QuotaExhausted("Gemini rate limit (429) persisted after a retry") from None
+                raise QuotaExhausted(f"{e} (still failing after a retry)") from None
             except Exception:
                 self.store.count_llm_call(day)  # failed calls still use quota
                 raise
