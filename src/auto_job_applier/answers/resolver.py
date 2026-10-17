@@ -150,7 +150,13 @@ def match_option(value: Value, field: FormField) -> str | None:
     if value == DECLINE:
         hits = [o for o in field.options if _DECLINE_OPTION.search(normalize(o))]
     else:
-        hits = [o for o in field.options if v in normalize(o) or normalize(o) in v]
+        # Whole words, either way round: "No" must not match "Latino".
+        words = set(v.split())
+        hits = [
+            o
+            for o in field.options
+            if words <= set(normalize(o).split()) or set(normalize(o).split()) <= words
+        ]
     return hits[0] if len(hits) == 1 else None
 
 

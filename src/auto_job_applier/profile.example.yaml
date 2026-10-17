@@ -78,4 +78,4 @@ llm:
   min_interval_seconds: 4.5
   daily_call_budget: 300
 
-resume_path: ~/.auto-job-applier/resume.pdf
+resume_path: resume.pdf  # relative paths live next to this file

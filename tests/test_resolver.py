@@ -284,3 +284,41 @@ def test_opt_in_is_not_a_visa_question(profile, bank):
         [F("Opt in to text message updates?", "select", options=YES_NO)], profile, bank, model
     )
     assert a.source == "llm"
+
+
+@pytest.mark.parametrize(
+    ("value", "options", "expected"),
+    [
+        # "no" must not match "Lati-no" or "Not ..." by substring
+        ("No", ["Hispanic or Latino", "Not Hispanic or Latino"], None),
+        ("No", ["Hispanic or Latino", "White"], None),  # substring would pick "Latino"
+        ("No", ["Yes", "No", "Decline To Self Identify"], "No"),
+        (
+            "I am not a protected veteran",
+            [
+                "I identify as one or more of the classifications of protected veteran",
+                "I am not a protected veteran",
+                "I don't wish to answer",
+            ],
+            "I am not a protected veteran",
+        ),
+        ("I am not a protected veteran", ["I am a veteran", "I am not a veteran"], None),
+        (
+            "No, I do not have a disability",
+            [
+                "Yes, I have a disability, or have had one in the past",
+                "No, I do not have a disability and have not had one in the past",
+                "I do not want to answer",
+            ],
+            "No, I do not have a disability and have not had one in the past",
+        ),
+        ("male", ["Male", "Female", "Non-binary"], "Male"),
+        (
+            "Black or African American",
+            ["White", "Black or African American", "Asian"],
+            "Black or African American",
+        ),
+    ],
+)
+def test_match_option_uses_whole_words(value, options, expected):
+    assert resolver.match_option(value, F("q", "select", options=options)) == expected
