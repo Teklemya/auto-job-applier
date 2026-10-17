@@ -72,3 +72,38 @@ def test_quota_exhausted_is_not_confident(profile):
     model = FakeLLM(llm.QuotaExhausted("daily LLM budget of 300 calls used"))
     a = writer.make_writer(profile, model)(COVER, JOB, JD)
     assert not a.confident and "budget" in a.reason
+
+
+def _prompt(profile, field=COVER, today="2026-10-17"):
+    model = FakeLLM(draft(150))
+    writer.make_writer(profile, model, today=lambda: today)(field, JOB, JD)
+    return model.calls[0]["prompt"]
+
+
+def test_signs_with_preferred_name(profile):
+    profile.contact.preferred_name = "Izzy"
+    assert "sign off with 'Izzy Doe'" in _prompt(profile)
+
+
+def test_signs_with_first_name_without_a_preferred_one(profile):
+    profile.contact.preferred_name = None
+    assert "sign off with 'Jane Doe'" in _prompt(profile)
+
+
+def test_knows_today_and_whether_the_candidate_graduated(profile):
+    # example profile: B.S. Computer Science, graduation 2024-05
+    p = _prompt(profile, today="2026-10-17")
+    assert "Today is 2026-10-17" in p
+    assert "graduated 2024-05" in p
+    assert "graduates 2024-05 (not yet graduated)" in _prompt(profile, today="2024-01-01")
+
+
+def test_states_the_current_role_as_given(profile):
+    assert "Current job: Software Engineer at Example Corp" in _prompt(profile)
+
+
+def test_system_prompt_rules():
+    s = " ".join(writer.SYSTEM.split())
+    assert "I am applying" in s  # forbidden opener is named
+    assert "exactly as the resume" in s  # titles and employment types not reworded
+    assert "most relevant" in s  # pick the highlight per job
