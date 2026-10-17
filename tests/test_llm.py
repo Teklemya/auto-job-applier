@@ -234,3 +234,11 @@ def test_make_llm_uses_the_roles_model(example_profile_data, write_profile, stor
     assert fit_llm.provider.model == profile.llm.fit.model == "gemini-3.5-flash-lite"
     assert answers_llm.provider.model == profile.llm.answers.model == "gemini-3.8-flash"
     assert fit_llm.daily_budget == 450 and answers_llm.daily_budget == 18
+
+
+def test_failed_calls_still_count_against_the_budget(store):
+    clock = FakeClock()
+    b = _budgeted(FakeProvider(llm.LLMError("bad output")), store, clock)
+    with pytest.raises(llm.LLMError):
+        _ask(b)
+    assert store.llm_usage("2026-10-17", "m") == (1, 0)

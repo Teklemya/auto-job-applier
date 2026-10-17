@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from ..llm import LLM, LLMError, QuotaExhausted
 from ..models import FormField, Job, ResolvedAnswer
 from ..profile import Profile
+from .facts import candidate_facts
 from .resolver import Writer
 
 LETTER_WORDS = 250
@@ -41,21 +42,6 @@ class Draft(BaseModel):
     missing_facts: list[str]
 
 
-def _facts(p: Profile, today: str) -> str:
-    lines = [f"Today is {today}."]
-    for e in p.education:
-        when = (
-            f"graduated {e.graduation}"
-            if e.graduation <= today[:7]
-            else f"graduates {e.graduation} (not yet graduated)"
-        )
-        lines.append(f"Education: {e.degree} in {e.major}, {e.school}, {when}.")
-    x = p.experience
-    if x.current_title and x.current_company:
-        lines.append(f"Current job: {x.current_title} at {x.current_company}.")
-    return "Candidate facts:\n" + "\n".join(lines)
-
-
 def _instructions(field: FormField, job: Job, name: str) -> tuple[str, int]:
     if "cover letter" in field.label.lower():
         return (
@@ -79,7 +65,7 @@ def make_writer(
 
     def write(field: FormField, job: Job, jd: str) -> ResolvedAnswer:
         task, limit = _instructions(field, job, name)
-        prompt = f"{task}\n\n{_facts(profile, today())}\n\nJob description:\n{jd[:10_000]}"
+        prompt = f"{task}\n\n{candidate_facts(profile, today())}\n\nJob description:\n{jd[:10_000]}"
         try:
             d = model.generate(
                 system=SYSTEM,

@@ -302,7 +302,11 @@ def test_opt_in_is_not_a_visa_question(profile, bank):
             ],
             "I am not a protected veteran",
         ),
-        ("I am not a protected veteran", ["I am a veteran", "I am not a veteran"], None),
+        (
+            "I am not a protected veteran",
+            ["I am a veteran", "I am not a veteran"],
+            "I am not a veteran",
+        ),
         (
             "No, I do not have a disability",
             [
@@ -322,3 +326,57 @@ def test_opt_in_is_not_a_visa_question(profile, bank):
 )
 def test_match_option_uses_whole_words(value, options, expected):
     assert resolver.match_option(value, F("q", "select", options=options)) == expected
+
+
+@pytest.mark.parametrize(
+    ("value", "options"),
+    [
+        # Dropping "not" must never flip the answer
+        ("I am not a protected veteran", ["I am a veteran", "Decline to answer"]),
+        ("No, I do not have a disability", ["I have a disability", "Prefer not to say"]),
+        # Placeholder options with no words match nothing
+        ("Job board", ["--", "LinkedIn", "Referral"]),
+        ("Job board", ["", "LinkedIn"]),
+    ],
+)
+def test_match_option_never_flips_negation_or_picks_placeholders(value, options):
+    assert resolver.match_option(value, F("q", "select", options=options)) is None
+
+
+def test_match_option_still_finds_the_option_next_to_a_placeholder():
+    field = F("q", "select", options=["--", "Job board", "LinkedIn"])
+    assert resolver.match_option("Job board", field) == "Job board"
+
+
+def test_optional_fields_never_reach_the_llm(profile, bank):
+    model = FakeLLM()
+    [a] = run([F("Favorite color?", required=False)], profile, bank, model)
+    assert model.calls == [] and a.value is None and a.confident
+
+
+def test_profile_value_that_fits_no_option_falls_through(profile, bank):
+    bank.save("Highest degree", "Bachelor's")
+    field = F("Highest degree", "select", options=["High school", "Bachelor's", "Master's"])
+    [a] = run([field], profile, bank)  # profile says "Bachelor of Science": no option fits
+    assert (a.value, a.source) == ("Bachelor's", "bank")
+
+
+def test_gate_blocks_required_field_without_a_value_even_if_marked_confident():
+    field = F("Anything")
+    assert resolver.gate([resolver.ResolvedAnswer(field, None, "llm", True)]) == ["Anything"]
+
+
+def test_llm_facts_use_the_preferred_name_and_graduation_status(profile, bank):
+    profile.contact.preferred_name = "Izzy"
+    model = FakeLLM(llm_says((0, "x", True)))
+    resolver.resolve(
+        [F("Favorite language?")],
+        profile,
+        bank=bank,
+        llm=model,
+        job=JOB,
+        jd=JD,
+        today=lambda: "2026-10-17",
+    )
+    prompt = model.calls[0]["prompt"]
+    assert "Izzy Doe" in prompt and "graduated 2024-05" in prompt

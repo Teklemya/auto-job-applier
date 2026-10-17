@@ -9,6 +9,7 @@ to the writer (T6), and only when required.
 
 import re
 from collections.abc import Callable
+from datetime import date
 
 from pydantic import BaseModel
 
@@ -16,6 +17,7 @@ from ..llm import LLM, LLMError, QuotaExhausted
 from ..models import FormField, Job, ResolvedAnswer
 from ..profile import DECLINE, Profile
 from .bank import AnswerBank, normalize
+from .facts import candidate_facts
 
 Writer = Callable[[FormField, Job, str], ResolvedAnswer]
 Value = str | bool | None
@@ -29,6 +31,7 @@ _WORK_AUTH = re.compile(
 _LONG_FORM = re.compile(
     r"cover letter|\bwhy\b|what interests you|interested in (this|our|working)|motivat"
 )
+_NEGATIONS = {"no", "not", "non", "never", "don", "dont", "doesn", "isn", "aren", "won"}
 _DECLINE_OPTION = re.compile(
     r"decline|not wish|don ?t wish|prefer not|choose not|not to (say|answer)"
 )
@@ -150,13 +153,16 @@ def match_option(value: Value, field: FormField) -> str | None:
     if value == DECLINE:
         hits = [o for o in field.options if _DECLINE_OPTION.search(normalize(o))]
     else:
-        # Whole words, either way round: "No" must not match "Latino".
+        # Whole words, either way round ("No" must not match "Latino"), with the same polarity
+        # ("I am not a veteran" must not match "I am a veteran"). Placeholders like "--" have
+        # no words and match nothing.
         words = set(v.split())
-        hits = [
-            o
-            for o in field.options
-            if words <= set(normalize(o).split()) or set(normalize(o).split()) <= words
-        ]
+        hits = []
+        for o in field.options:
+            ow = set(normalize(o).split())
+            same_polarity = bool(ow & _NEGATIONS) == bool(words & _NEGATIONS)
+            if ow and same_polarity and (words <= ow or ow <= words):
+                hits.append(o)
     return hits[0] if len(hits) == 1 else None
 
 
@@ -171,27 +177,15 @@ def _unresolved(field: FormField, reason: str, source: str = "none") -> Resolved
     return ResolvedAnswer(field, None, source, False, reason)
 
 
-def _facts(p: Profile) -> str:
-    x = p.experience
-    edu = "; ".join(f"{e.degree} in {e.major}, {e.school}, {e.graduation}" for e in p.education)
-    return (
-        f"Name: {p.contact.first_name} {p.contact.last_name}\n"
-        f"Location: {p.address.city}, {p.address.state}\n"
-        f"Education: {edu or 'see resume'}\n"
-        f"Years of experience: {x.years_experience:g}\n"
-        f"Current role: {x.current_title or '-'} at {x.current_company or '-'}"
-    )
-
-
 def _ask_llm(
-    pending: dict[int, FormField], profile: Profile, model: LLM, job: Job, jd: str
+    pending: dict[int, FormField], profile: Profile, model: LLM, job: Job, jd: str, today: str
 ) -> dict[int, ResolvedAnswer]:
     questions = "\n".join(
         f"[{i}] {f.label} ({f.kind}{'; options: ' + ' | '.join(f.options) if f.options else ''})"
         for i, f in pending.items()
     )
     prompt = (
-        f"Candidate facts:\n{_facts(profile)}\n\n"
+        f"{candidate_facts(profile, today)}\n\n"
         f"Job: {job.role} at {job.company}\nJob description:\n{jd[:10_000]}\n\n"
         f"Questions:\n{questions}"
     )
@@ -226,6 +220,7 @@ def resolve(
     job: Job,
     jd: str,
     writer: Writer | None = None,
+    today: Callable[[], str] = lambda: date.today().isoformat(),
 ) -> list[ResolvedAnswer]:
     results: dict[int, ResolvedAnswer] = {}
     for_llm: dict[int, FormField] = {}
@@ -279,7 +274,7 @@ def resolve(
         else:
             results[i] = _answer(f, None, "none")
     if for_llm:
-        results.update(_ask_llm(for_llm, profile, llm, job, jd))
+        results.update(_ask_llm(for_llm, profile, llm, job, jd, today()))
     return [results[i] for i in range(len(fields))]
 
 

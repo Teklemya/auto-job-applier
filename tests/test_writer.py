@@ -107,3 +107,9 @@ def test_system_prompt_rules():
     assert "I am applying" in s  # forbidden opener is named
     assert "exactly as the resume" in s  # titles and employment types not reworded
     assert "most relevant" in s  # pick the highlight per job
+
+
+def test_missing_facts_block_even_when_marked_confident(profile):
+    model = FakeLLM(draft(confident=True, missing=["a referral name"]))
+    a = writer.make_writer(profile, model)(COVER, JOB, JD)
+    assert not a.confident and "a referral name" in a.reason
