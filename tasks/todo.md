@@ -13,7 +13,7 @@ Every task: `ruff check . && pytest` passes, plus its manual check.
 - [ ] Tests pass. `aja collect` on the live README; owner reviews the queue and SKIPPED reasons
 
 ## Phase 2: Brains (auto mode OK, stubbed LLM in tests)
-- [ ] T4 JD fetch (Greenhouse/Lever/Workday public JSON) + Sonnet 5.5 fit screen (verdict strong/ok/stretch/mismatch, skip only `fit_skip` verdicts, score for ordering; cached resume, at most once per job)
+- [ ] T4 JD fetch (Greenhouse/Lever/Workday public JSON) + Gemini Flash fit screen (llm.py provider + rate limiter + daily budget; skills pre-filter; verdict strong/ok/stretch/mismatch, skip only `fit_skip` verdicts, score for ordering; quota out → stays PENDING; at most once per job)
 - [ ] T5 Answer resolver + D1 gate: profile → preferences → bank → LLM; sponsorship/auth always from profile (test-enforced)
 - [ ] T6 Answer writer: cover letters and "why us" grounded in resume + JD; `confident:false` when facts are missing
 
@@ -23,7 +23,7 @@ Every task: `ruff check . && pytest` passes, plus its manual check.
 
 ## Owner prerequisites (before Phase 3)
 - [ ] Resume PDF + filled `~/.auto-job-applier/profile.yaml`
-- [ ] Anthropic API key
+- [ ] Gemini API key (Google AI Studio, free tier)
 - [ ] Workday email + password in macOS Keychain
 - [ ] `aja login` → sign into Jobright once
 
@@ -40,7 +40,7 @@ Every task: `ruff check . && pytest` passes, plus its manual check.
 ## Phase 4: Autonomy
 - [ ] T10 Submit path: confirm the success page before APPLIED, daily cap, screenshots
 - [ ] T12 Scheduling + notifications: launchd at 8am and 2pm, catch-up on wake, lock, macOS summary
-- [ ] T13 Salary lookup: `web_search` range cache, $120k floor
+- [ ] T13 Salary lookup: Gemini + Search grounding range cache, $120k floor
 
 ### Checkpoint D
 - [ ] First live week with a cap of 3 submits a day, then raise it

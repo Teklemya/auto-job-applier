@@ -16,9 +16,10 @@ except for that doc.
 | D3 | Greenhouse/Lever drafts | **Answer packet + re-fill.** Resolved answers are stored in the DB. `aja review` re-fills the form in seconds and highlights the blocking fields, then the owner submits. Answers given at review go into the answer bank. |
 | D4 | CAPTCHA | A visible challenge forces a draft. The owner solves it at review. |
 | D5 | Where it runs | Laptop for v1. launchd fires at 8am and 2pm, and a missed run catches up on wake. The code stays portable for a future home server. No GitHub Actions in v1. |
-| D6 | Salary (required only) | Claude's `web_search` server tool → company and role range (levels.fyi, Reddit), cached per company+level. Answer at the upper-middle of the range with a $120k floor. |
-| D7 | LLM | Claude Sonnet 5.5 (`claude-sonnet-5-5`). The resume and profile go in a cached system prompt, and structured outputs are used for every decision. About $7–10 a week. |
+| D6 | Salary (required only) | Gemini with Google Search grounding (free quota checked at T13) → company and role range (levels.fyi, Reddit), cached per company+level. Answer at the upper-middle of the range with a $120k floor. |
+| D7 | LLM | **Hard $0.** Gemini Flash on Google's free tier via the `google-genai` SDK, behind a provider interface in `llm.py`; JSON-schema structured output for every decision. Use the LLM as little as possible: a deterministic skills pre-filter before the fit check, the answer bank before the LLM, cover letters only when the field is required. Revised 2026-10-17 (was Sonnet 5.5, ~$7–10/week); see `docs/ideas/zero-cost-llm.md`. |
 | D8 | Jobright | Read it in the same persistent browser profile, like a human visit (Liked list + >80% match), twice a day. No token scraping. |
+| D10 | LLM budget guards | Limits are settings, not code (free quotas change): a client-side rate limiter (min ~4.5s between calls, under 15 RPM) and a daily call budget (default 300, far under the ~1,500 RPD quota) that stops runaway loops. A 429 gets one backoff retry, then counts as quota exhausted: the fit check waits (job stays PENDING) and unanswered fields → draft. Never a guess. Tests use a fake clock. |
 | D9 | Fit rule | The LLM returns a verdict (`strong` / `ok` / `stretch` / `mismatch`) plus a 0–100 score, matched keywords and a reason. Only verdicts in `settings.fit_skip` (default `[mismatch]`) → SKIPPED(fit). The score only orders the queue and never decides a skip. Calibrated at Checkpoint B on ~20 real jobs. |
 
 ## Architecture
@@ -59,7 +60,7 @@ and Workday share all the answering logic, and v2's "teach a new portal" only ne
 | `answers/resolver.py` | The resolution order above, plus the D1 gate |
 | `answers/writer.py` | LLM-written cover letters and "why us" answers from the resume and the JD, in a human tone |
 | `answers/salary.py` | D6 |
-| `llm.py` | Anthropic SDK client and prompts, with Sonnet 5.5 and prompt caching |
+| `llm.py` | Provider interface + Gemini Flash client (free tier), prompts, rate limiter and daily call budget (D7, D10) |
 | `engines/base.py` | `ATSEngine`: `open`, `extract_fields`, `fill`, `blockers`, `submit`, `save_draft` |
 | `engines/greenhouse.py`, `engines/lever.py` | Single-page forms |
 | `engines/workday.py` | `data-automation-id` selectors kept in one table. Sign in or create the tenant account (password in macOS Keychain). Then loop: extract → resolve → fill → Next until Review, then gate → Submit or "Save and continue later". Email verification forces a draft. |
@@ -81,7 +82,7 @@ in review instead of disappearing.
 
 ## Owner prerequisites (needed before Phase 3; Phases 1–2 don't need them)
 - Resume PDF and a filled-in `~/.auto-job-applier/profile.yaml`
-- Anthropic API key (`ANTHROPIC_API_KEY` or `ant auth login`)
+- Gemini API key from Google AI Studio (free tier, no card), in `GEMINI_API_KEY` or the Keychain
 - A single Workday email + password, stored in the macOS Keychain
 - One-time `aja login` to sign into Jobright in the tool's browser profile
 
@@ -118,8 +119,12 @@ is `ruff check . && pytest`, plus the manual check listed.
 ### Phase 2: Brains (auto mode OK, stubbed LLM in tests)
 **T4 Job description fetch + LLM fit screen** (M). Files: `jd_fetch.py`, `llm.py`, `screen.py`
 - Job description text from the Greenhouse, Lever and Workday public JSON endpoints
-- Fit result `{verdict, score, matched_keywords, reason}` via structured output on Sonnet 5.5,
-  with the resume in a cached system prompt. The prompt defines each verdict (D9)
+- `llm.py`: provider interface + Gemini Flash client, rate limiter, daily call budget, 429 →
+  one retry then quota-exhausted (D7, D10). The `anthropic` dependency is removed
+- Deterministic skills pre-filter: no overlap between the resume skills and the JD →
+  `mismatch` without an LLM call, labeled as a keyword verdict
+- Fit result `{verdict, score, matched_keywords, reason}` via structured output on Gemini
+  Flash. The prompt defines each verdict (D9). Quota exhausted → the job stays PENDING
 - Verdict in `settings.fit_skip` (default `[mismatch]`) → SKIPPED(fit). The score only orders the
   queue. The fit check runs at most once per job
 - *Manual:* fit reasons for 10 real jobs read correctly
@@ -134,6 +139,8 @@ is `ruff check . && pytest`, plus the manual check listed.
 - Cover letters and "why us" answers are grounded in the resume and the job description, within
   a length limit
 - The LLM marks `confident:false` when it would need facts that aren't in the resume
+- Written only when the field is required; optional cover letter fields stay blank (D7)
+- Quota exhausted → `confident:false`, so the job becomes a draft
 
 ### Checkpoint B: the owner reads 5 generated cover letters and "why us" answers and approves the tone
 The owner also reviews fit verdicts and reasons for ~20 real jobs, every `mismatch` included, and
@@ -171,7 +178,7 @@ by the owner editing the config.
 Runs at 8am and 2pm and catches up on wake, a lock file prevents overlap, and each run ends
 with a macOS summary notification.
 
-**T13 Salary lookup** (S). `web_search` → range cached per company+level, never below the $120k
+**T13 Salary lookup** (S). Gemini + Google Search grounding → range cached per company+level, never below the $120k
 floor.
 
 ### Checkpoint D: first live week with a cap of 3 submits a day, then raise it
@@ -179,6 +186,8 @@ floor.
 ## Risks
 | Risk | Impact | Mitigation |
 |---|---|---|
+| Gemini free quota cut or terms change | Med | Limits are settings (D10). Quota out → jobs wait or draft, never guessed. Provider interface keeps a swap cheap |
+| Gemini Flash overclaims `confident` | High | Shadow week: owner checks every confident answer before `submit` is turned on |
 | Workday selectors differ per tenant or change | High | Selector table + fixture tests. Unknown page → STAGED, never guessed |
 | Bot detection or CAPTCHAs | Med | Headed real Chrome, residential IP, human pacing, low volume. CAPTCHA → draft |
 | Bad answer submitted under the owner's name | High | Deterministic gate, sponsorship answers hard-coded, shadow week, daily cap |
