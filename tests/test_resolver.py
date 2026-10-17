@@ -380,3 +380,9 @@ def test_llm_facts_use_the_preferred_name_and_graduation_status(profile, bank):
     )
     prompt = model.calls[0]["prompt"]
     assert "Izzy Doe" in prompt and "graduated 2024-05" in prompt
+
+
+def test_optional_salary_stays_blank_even_with_a_banked_answer(profile, bank):
+    bank.save("Salary expectations", "150000")
+    [a] = run([F("Salary expectations", required=False)], profile, bank)
+    assert (a.value, a.source, a.confident) == (None, "preferences", True)

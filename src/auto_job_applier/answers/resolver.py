@@ -21,6 +21,7 @@ from .facts import candidate_facts
 
 Writer = Callable[[FormField, Job, str], ResolvedAnswer]
 Value = str | bool | None
+_BLANK = object()  # a source deliberately answers "leave this empty"
 
 _WORK_AUTH = re.compile(
     r"sponsor|visa|authori[sz]ed to work|work authori[sz]ation|authori[sz]ation to work"
@@ -103,19 +104,19 @@ def _profile_value(label: str, p: Profile) -> Value:
     return None
 
 
-def _preference_value(label: str, field: FormField, p: Profile) -> tuple[bool, Value]:
-    """(matched, value). A matched optional salary is deliberately blank."""
+def _preference_value(label: str, field: FormField, p: Profile) -> Value | object:
+    """Preset answers; None = not a preference. Optional salary is deliberately `_BLANK`."""
     pref = p.preferences
     if re.search(r"start date|when can you start|available to start|earliest start", label):
-        return True, pref.start_date
+        return pref.start_date
     if re.search(r"how did you (hear|find|learn)|where did you (hear|find|learn)", label):
-        return True, pref.heard_about_us
+        return pref.heard_about_us
     if re.search(r"relocat", label):
-        return True, pref.willing_to_relocate
+        return pref.willing_to_relocate
     if re.search(r"salary|compensation|pay expectation", label):
-        # D6: market lookup arrives in T13; the owner's floor is the fallback.
-        return True, str(pref.salary_floor) if field.required else None
-    return False, None
+        # R12/D6: blank unless required; market lookup arrives in T13, the floor is the fallback.
+        return str(pref.salary_floor) if field.required else _BLANK
+    return None
 
 
 def _work_auth_value(label: str, p: Profile) -> Value:
@@ -175,6 +176,25 @@ def _answer(field: FormField, value: Value, source: str, reason: str = "") -> Re
 
 def _unresolved(field: FormField, reason: str, source: str = "none") -> ResolvedAnswer:
     return ResolvedAnswer(field, None, source, False, reason)
+
+
+def _from_known_sources(
+    f: FormField, label: str, profile: Profile, bank: AnswerBank
+) -> ResolvedAnswer | None:
+    """profile → preferences → bank (R10): the first answer that fits the field wins."""
+    sources: list[tuple[str, Callable[[], Value | object]]] = [
+        ("profile", lambda: _profile_value(label, profile)),
+        ("preferences", lambda: _preference_value(label, f, profile)),
+        ("bank", lambda: bank.lookup(f.label)),
+    ]
+    for source, get in sources:
+        v = get()
+        if v is None:
+            continue
+        ans = _answer(f, None if v is _BLANK else v, source)
+        if ans.confident:
+            return ans
+    return None
 
 
 def _ask_llm(
@@ -253,23 +273,9 @@ def resolve(
             else:
                 results[i] = writer(f, job, jd)
             continue
-        if (v := _profile_value(label, profile)) is not None:
-            ans = _answer(f, v, "profile")
-            if ans.confident:
-                results[i] = ans
-                continue
-        matched, v = _preference_value(label, f, profile)
-        if matched:
-            ans = _answer(f, v, "preferences")
-            if ans.confident:
-                results[i] = ans
-                continue
-        if (v := bank.lookup(f.label)) is not None:
-            ans = _answer(f, v, "bank")
-            if ans.confident:
-                results[i] = ans
-                continue
-        if f.required:
+        if (ans := _from_known_sources(f, label, profile, bank)) is not None:
+            results[i] = ans
+        elif f.required:
             for_llm[i] = f
         else:
             results[i] = _answer(f, None, "none")

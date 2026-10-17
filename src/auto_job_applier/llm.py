@@ -9,8 +9,9 @@ never guess.
 import os
 import time
 from collections.abc import Callable
-from datetime import date
+from datetime import datetime
 from typing import TYPE_CHECKING, Literal, Protocol
+from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, ValidationError
 
@@ -19,6 +20,12 @@ if TYPE_CHECKING:
     from .store import JobStore
 
 Attachment = tuple[bytes, str]  # (data, mime type)
+
+
+def quota_day(now: datetime | None = None) -> str:
+    """The quota day as Google counts it: free-tier limits reset at midnight Pacific."""
+    pacific = ZoneInfo("America/Los_Angeles")
+    return (now.astimezone(pacific) if now else datetime.now(pacific)).date().isoformat()
 
 
 class LLMError(Exception):
@@ -107,7 +114,7 @@ class BudgetedLLM:
         backoff: float = 60,  # one RPM window
         clock: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], None] = time.sleep,
-        today: Callable[[], str] = lambda: date.today().isoformat(),
+        today: Callable[[], str] = quota_day,
     ):
         self.provider, self.store, self.name = provider, store, name
         self.daily_budget, self.min_interval, self.backoff = daily_budget, min_interval, backoff

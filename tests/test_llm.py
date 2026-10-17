@@ -242,3 +242,11 @@ def test_failed_calls_still_count_against_the_budget(store):
     with pytest.raises(llm.LLMError):
         _ask(b)
     assert store.llm_usage("2026-10-17", "m") == (1, 0)
+
+
+def test_quota_day_follows_pacific_time():
+    from datetime import UTC, datetime
+
+    # 1am Eastern on the 18th is still the 17th in California, where Google resets quotas
+    assert llm.quota_day(datetime(2026, 10, 18, 5, 0, tzinfo=UTC)) == "2026-10-17"
+    assert llm.quota_day(datetime(2026, 10, 18, 8, 0, tzinfo=UTC)) == "2026-10-18"
