@@ -131,3 +131,41 @@ def test_fit_prints_each_verdict(aja_home, example_profile_data, monkeypatch):
     assert result.output.count("ok  70") == 2
     assert "fine" in result.output
     assert "Fit checked 2" in result.output
+
+
+def test_write_prints_a_cover_letter_for_a_job(aja_home, example_profile_data, monkeypatch):
+    from auto_job_applier import cli
+    from auto_job_applier.answers import writer
+
+    prompts = []
+
+    class Model:
+        def generate(self, **kw):
+            prompts.append(kw["prompt"])
+            return writer.Draft(
+                text="Dear NVIDIA hiring team, hi.", confident=True, missing_facts=[]
+            )
+
+    monkeypatch.setattr(cli, "make_llm", lambda profile, store: Model())
+    monkeypatch.setattr(cli, "fetch_description", lambda job: "Build GPU drivers in C++.")
+    _collect_and_profile(aja_home, example_profile_data)
+    job_id = next(
+        line.split()[0]
+        for line in runner.invoke(app, ["list"]).output.splitlines()
+        if "NVIDIA" in line
+    )
+    result = runner.invoke(app, ["write", job_id])
+    assert result.exit_code == 0, result.output
+    assert "Dear NVIDIA hiring team, hi." in result.output
+    assert "GPU drivers" in prompts[0]
+
+    why = runner.invoke(app, ["write", job_id, "--why"])
+    assert why.exit_code == 0, why.output
+    assert "Why do you want to work at NVIDIA?" in prompts[1]
+
+
+def test_write_unknown_job(aja_home, example_profile_data):
+    _collect_and_profile(aja_home, example_profile_data)
+    result = runner.invoke(app, ["write", "99999"])
+    assert result.exit_code == 1
+    assert "No job #99999" in result.output
