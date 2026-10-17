@@ -7,6 +7,9 @@ from typing import Annotated
 import typer
 
 from . import paths
+from .fit import screen_fit
+from .jd_fetch import fetch_description
+from .llm import LLMError, make_llm
 from .models import ATS, Status
 from .profile import ProfileError, load_profile, load_targeting
 from .screen import screen_new
@@ -95,6 +98,29 @@ def collect(
     if counts:
         summary = ", ".join(f"{n} {s}" for s, n in sorted(counts.items()))
         typer.echo(f"Screened {sum(counts.values())}: {summary}")
+
+
+@app.command()
+def fit(
+    limit: Annotated[int | None, typer.Option(help="Check at most this many new jobs.")] = None,
+) -> None:
+    """Fetch job descriptions and run the LLM fit check on queued jobs (free Gemini tier)."""
+    store = _store()
+    try:
+        profile = load_profile(paths.profile_path())
+        run = screen_fit(store, profile, make_llm(profile, store), fetch_description, limit)
+    except (ProfileError, LLMError) as e:
+        typer.echo(str(e), err=True)
+        raise typer.Exit(1) from e
+    finally:
+        store.close()
+    for job, f in run.results:
+        verdict = f"{f.verdict:>8} {f.score:>3}" if f.verdict else f"{'-':>8} {'-':>3}"
+        typer.echo(f"{job.id:>5} {verdict}  {job.company[:20]:<20} {job.role[:40]:<40}  {f.reason}")
+    summary = ", ".join(f"{n} {k}" for k, n in sorted(run.counts.items()) if k != "checked")
+    typer.echo(f"Fit checked {run.counts['checked']}" + (f" ({summary})" if summary else ""))
+    if run.stopped:
+        typer.echo(f"Stopped early: {run.stopped}. Remaining jobs wait for the next run.")
 
 
 @app.command("list")

@@ -99,3 +99,35 @@ def test_collect_retires_postings_that_disappeared(aja_home, tmp_path):
     result = runner.invoke(app, ["collect", "--file", str(trimmed)])
     assert result.exit_code == 0, result.output
     assert "no longer listed" in result.output
+
+
+def _collect_and_profile(aja_home, example_profile_data):
+    runner.invoke(app, ["collect", "--file", str(FIXTURES / "simplify_readme.md")])
+    (aja_home / "profile.yaml").write_text(yaml.safe_dump(example_profile_data))
+
+
+def test_fit_without_api_key_explains_how_to_set_it(aja_home, example_profile_data, monkeypatch):
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+    _collect_and_profile(aja_home, example_profile_data)
+    result = runner.invoke(app, ["fit"])
+    assert result.exit_code == 1
+    assert "GEMINI_API_KEY" in result.output
+    assert "Traceback" not in result.output
+
+
+def test_fit_prints_each_verdict(aja_home, example_profile_data, monkeypatch):
+    from auto_job_applier import cli, fit
+
+    class Model:
+        def generate(self, **kw):
+            return fit.FitAnswer(verdict="ok", score=70, matched_keywords=["Go"], reason="fine")
+
+    monkeypatch.setattr(cli, "make_llm", lambda profile, store: Model())
+    monkeypatch.setattr(cli, "fetch_description", lambda job: "Backend services in Python. " * 200)
+    _collect_and_profile(aja_home, example_profile_data)
+    result = runner.invoke(app, ["fit", "--limit", "2"])
+    assert result.exit_code == 0, result.output
+    assert result.output.count("ok  70") == 2
+    assert "fine" in result.output
+    assert "Fit checked 2" in result.output

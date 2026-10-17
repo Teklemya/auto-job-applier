@@ -5,6 +5,7 @@ falling back to a default (a misspelled sponsorship key must never become a wron
 """
 
 from pathlib import Path
+from typing import Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
@@ -130,10 +131,23 @@ class Targeting(_Strict):
     ]  # fmt: skip
 
 
+FitVerdict = Literal["strong", "ok", "stretch", "mismatch"]
+
+
 class Settings(_Strict):
     # S1: shadow mode. Only the owner flips this by editing profile.yaml.
     submit: bool = False
     daily_submit_cap: int = Field(default=3, ge=0)
+    # D9: fit verdicts that skip a job. Add "stretch" to apply less widely.
+    fit_skip: list[FitVerdict] = ["mismatch"]
+
+
+class LLMSettings(_Strict):
+    """D7/D10: Gemini free tier. Free quotas change, so the limits live here, not in code."""
+
+    model: str = "gemini-flash-latest"
+    min_interval_seconds: float = Field(default=4.5, ge=0)  # stays under 15 requests/minute
+    daily_call_budget: int = Field(default=300, ge=0)  # runaway-loop breaker, far under RPD
 
 
 class Profile(_Strict):
@@ -147,6 +161,9 @@ class Profile(_Strict):
     preferences: Preferences = Preferences()
     targeting: Targeting = Targeting()
     settings: Settings = Settings()
+    llm: LLMSettings = LLMSettings()
+    # Resume skills for the keyword pre-filter (D7). Empty = every job goes to the LLM.
+    skills: list[str] = []
     resume_path: Path
 
     @field_validator("resume_path")

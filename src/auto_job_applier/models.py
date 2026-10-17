@@ -47,3 +47,14 @@ class Job:
     id: int | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
+
+
+@dataclass
+class Fit:
+    """LLM fit check result (R8, D9). Recorded once per job."""
+
+    verdict: str | None  # strong | ok | stretch | mismatch; None = not checked (no description)
+    score: int | None  # 0-100; orders the queue, never decides a skip
+    matched_keywords: list[str]
+    reason: str
+    source: str  # "llm" | "keyword" (pre-filter, no LLM call) | "none"

@@ -117,7 +117,7 @@ is `ruff check . && pytest`, plus the manual check listed.
 ### Checkpoint A: review the queue by eye with the owner
 
 ### Phase 2: Brains (auto mode OK, stubbed LLM in tests)
-**T4 Job description fetch + LLM fit screen** (M). Files: `jd_fetch.py`, `llm.py`, `screen.py`
+**T4 Job description fetch + LLM fit screen** (M). Files: `jd_fetch.py`, `llm.py`, `fit.py`, `store.py`
 - Job description text from the Greenhouse, Lever and Workday public JSON endpoints
 - `llm.py`: provider interface + Gemini Flash client, rate limiter, daily call budget, 429 →
   one retry then quota-exhausted (D7, D10). The `anthropic` dependency is removed

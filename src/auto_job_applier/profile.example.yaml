@@ -64,5 +64,18 @@ settings:
   # Shadow mode: false = draft everything, submit nothing. Only you change this.
   submit: false
   daily_submit_cap: 3
+  # Fit verdicts that skip a job: strong | ok | stretch | mismatch. Add stretch to be pickier.
+  fit_skip: [mismatch]
+
+# Skills from your resume. A long job description that mentions none of them is skipped
+# without an LLM call. Leave empty to send every job to the LLM.
+skills: [Python, Java, JavaScript, TypeScript, React, SQL, AWS, Docker]
+
+# Gemini free tier (needs GEMINI_API_KEY from aistudio.google.com). Check your project's real
+# limits in AI Studio; these stay well under them.
+llm:
+  model: gemini-flash-latest
+  min_interval_seconds: 4.5
+  daily_call_budget: 300
 
 resume_path: ~/.auto-job-applier/resume.pdf
