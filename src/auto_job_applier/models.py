@@ -50,6 +50,25 @@ class Job:
 
 
 @dataclass
+class FormField:
+    """One visible form field, as any ATS engine extracts it."""
+
+    label: str
+    kind: str = "text"  # text | textarea | select | radio | checkbox | file
+    required: bool = False
+    options: list[str] = field(default_factory=list)  # select/radio choices
+
+
+@dataclass
+class ResolvedAnswer:
+    field: FormField
+    value: str | None  # None = leave blank; option fields hold the exact option text
+    source: str  # profile | preferences | bank | llm | none
+    confident: bool
+    reason: str = ""
+
+
+@dataclass
 class Fit:
     """LLM fit check result (R8, D9). Recorded once per job."""
 

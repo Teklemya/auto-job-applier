@@ -61,6 +61,14 @@ CREATE TABLE IF NOT EXISTS fit_checks (
     checked_at  TEXT NOT NULL
 );
 
+-- Answers the owner gave at review (D3), reused for the same question later (R10).
+CREATE TABLE IF NOT EXISTS answer_bank (
+    question_key  TEXT PRIMARY KEY,
+    question      TEXT NOT NULL,
+    value         TEXT NOT NULL,
+    updated_at    TEXT NOT NULL
+);
+
 -- LLM calls per local day: the daily budget (D10) holds across runs.
 CREATE TABLE IF NOT EXISTS llm_usage (
     day           TEXT PRIMARY KEY,
@@ -271,6 +279,19 @@ class JobStore:
         return Fit(
             row["verdict"], row["score"], json.loads(row["keywords"]), row["reason"], row["source"]
         )
+
+    def bank_entries(self) -> list[tuple[str, str]]:
+        """[(question_key, value)]"""
+        rows = self._conn.execute("SELECT question_key, value FROM answer_bank")
+        return [(r["question_key"], r["value"]) for r in rows]
+
+    def save_bank_entry(self, key: str, question: str, value: str) -> None:
+        with self._conn:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO answer_bank (question_key, question, value, updated_at)"
+                " VALUES (?, ?, ?, ?)",
+                (key, question, value, _now()),
+            )
 
     def count_llm_call(self, day: str, rate_limited: bool = False) -> None:
         with self._conn:
