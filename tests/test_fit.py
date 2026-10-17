@@ -8,7 +8,6 @@ from auto_job_applier.store import JobStore
 JD_PYTHON = (
     "We build backend services in Python and Go on AWS. " + "Collaborate with the team. " * 60
 )
-JD_FIRMWARE = "Write embedded firmware for microcontrollers in assembly. " + "Lab bring-up. " * 80
 
 
 @pytest.fixture
@@ -20,7 +19,6 @@ def store(tmp_path):
 
 @pytest.fixture
 def profile(example_profile_data, write_profile):
-    example_profile_data["skills"] = ["Python", "Go", "AWS", "C++", "React", "Node.js"]
     return load_profile(write_profile(example_profile_data))
 
 
@@ -63,32 +61,6 @@ def pending(store, n=1):
     return store.list(status=Status.PENDING)
 
 
-# --- keyword pre-filter ---
-
-
-@pytest.mark.parametrize(
-    ("text", "expected"),
-    [
-        ("Experience with python and AWS Lambda", ["Python", "AWS"]),
-        ("Modern C++17 and Node.js services", ["C++", "Node.js"]),
-        ("We use Golang and Google Cloud", []),  # "Go" must be a whole word
-        ("React Native, ReactJS", ["React"]),
-    ],
-)
-def test_matched_skills(text, expected):
-    skills = ["Python", "Go", "AWS", "C++", "React", "Node.js"]
-    assert fit.matched_skills(skills, text) == expected
-
-
-def test_keyword_mismatch_needs_a_real_description():
-    skills = ["Python"]
-    assert fit.keyword_verdict(skills, JD_FIRMWARE).verdict == "mismatch"
-    assert fit.keyword_verdict(skills, JD_FIRMWARE).source == "keyword"
-    assert fit.keyword_verdict(skills, "Short blurb, apply now.") is None  # too short to judge
-    assert fit.keyword_verdict(skills, JD_PYTHON) is None  # overlap → ask the LLM
-    assert fit.keyword_verdict([], JD_FIRMWARE) is None  # no skills listed → pre-filter off
-
-
 # --- screen_fit ---
 
 
@@ -120,15 +92,6 @@ def test_mismatch_is_skipped_with_reason(store, profile):
     assert got.status is Status.SKIPPED
     assert got.reason == "fit mismatch: data science role"
     assert got.tier is Tier.REMOTE
-
-
-def test_keyword_mismatch_never_calls_the_llm(store, profile):
-    [job] = pending(store)
-    model = FakeLLM()
-    fit.screen_fit(store, profile, model, fetch=lambda j: JD_FIRMWARE)
-    assert model.calls == []
-    assert store.get(job.id).status is Status.SKIPPED
-    assert store.get_fit(job.id).source == "keyword"
 
 
 def test_fit_skip_is_configurable(store, profile):

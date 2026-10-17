@@ -7,8 +7,8 @@ How might we screen jobs and write application answers for $0, without weakening
 "never guess" submit rule?
 
 ## Recommended Direction
-Use the LLM less, then send what's left to Gemini Flash on Google's free tier. A deterministic
-skills-overlap pre-filter decides obvious mismatches with no LLM call. The answer bank absorbs
+Use the LLM less, then send what's left to Gemini Flash on Google's free tier. Fit checks are
+batched 8 jobs per call. The answer bank absorbs
 repeat questions. Cover letters are written only when the field is required. What remains
 (~20–40 calls/day at first, falling as the answer bank grows) goes to Gemini Flash on the free
 tier through a provider interface in `llm.py` (`google-genai` SDK, JSON-schema structured
@@ -35,12 +35,12 @@ exhausted.
       answer it marked confident
 - [ ] The free quota holds about 40 calls/day. Test: log calls and 429s per run
 - [ ] Flash writes cover letters that sound human. Test: Checkpoint B, 5 letters
-- [ ] The keyword pre-filter doesn't drop good jobs. Test: Checkpoint B, ~20 verdicts
-      labeled keyword vs LLM
+- [x] ~~The keyword pre-filter doesn't drop good jobs.~~ It did (generic HPE/GlobalFoundries
+      descriptions), and batching made it pointless: removed at Checkpoint B
 
 ## MVP Scope
-In: `llm.py` provider interface + Gemini client, rate limiter + daily budget, skills pre-filter
-in T4, quota-exhausted → PENDING/draft handling, a call/429 counter in the run log.
+In: `llm.py` provider interface + Gemini client, rate limiter + daily budget, batched fit
+checks in T4, quota-exhausted → PENDING/draft handling, a call/429 counter in the run log.
 Out: everything below.
 
 ## Not Doing (and Why)

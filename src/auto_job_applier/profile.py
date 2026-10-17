@@ -184,8 +184,6 @@ class Profile(_Strict):
     targeting: Targeting = Targeting()
     settings: Settings = Settings()
     llm: LLMSettings = LLMSettings()
-    # Resume skills for the keyword pre-filter (D7). Empty = every job goes to the LLM.
-    skills: list[str] = []
     resume_path: Path
 
     @field_validator("resume_path")

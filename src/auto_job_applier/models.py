@@ -76,4 +76,4 @@ class Fit:
     score: int | None  # 0-100; orders the queue, never decides a skip
     matched_keywords: list[str]
     reason: str
-    source: str  # "llm" | "keyword" (pre-filter, no LLM call) | "none"
+    source: str  # "llm" | "none" ("keyword" rows are from a removed pre-filter)

@@ -17,7 +17,7 @@ except for that doc.
 | D4 | CAPTCHA | A visible challenge forces a draft. The owner solves it at review. |
 | D5 | Where it runs | Laptop for v1. launchd fires at 8am and 2pm, and a missed run catches up on wake. The code stays portable for a future home server. No GitHub Actions in v1. |
 | D6 | Salary (required only) | Gemini with Google Search grounding (free quota checked at T13) → company and role range (levels.fyi, Reddit), cached per company+level. Answer at the upper-middle of the range with a $120k floor. |
-| D7 | LLM | **Hard $0.** Gemini Flash on Google's free tier via the `google-genai` SDK, behind a provider interface in `llm.py`; JSON-schema structured output for every decision. Use the LLM as little as possible: a deterministic skills pre-filter before the fit check, the answer bank before the LLM, cover letters only when the field is required. Revised 2026-10-17 (was Sonnet 5.5, ~$7–10/week); see `docs/ideas/zero-cost-llm.md`. |
+| D7 | LLM | **Hard $0.** Gemini Flash on Google's free tier via the `google-genai` SDK, behind a provider interface in `llm.py`; JSON-schema structured output for every decision. Use the LLM as little as possible: batched fit checks, the answer bank before the LLM, cover letters only when the field is required. Revised 2026-10-17 (was Sonnet 5.5, ~$7–10/week); see `docs/ideas/zero-cost-llm.md`. |
 | D8 | Jobright | Read it in the same persistent browser profile, like a human visit (Liked list + >80% match), twice a day. No token scraping. |
 | D10 | LLM budget guards | Limits are settings, not code (free quotas change and are **per model**). Measured 2026-10-17 in AI Studio: Flash-Lite (3.1/3.5) 500/day + 15/min; Flash (3.6–3.8) only 20/day + 5/min. So fit checks use `gemini-3.5-flash-lite` (8 jobs per call, budget 450/day, 4.5s apart, minimal thinking) and form answers + cover letters use `gemini-3.8-flash` (budget 18/day, 12.5s apart). Each model has its own daily budget in the DB. A 429 gets one backoff retry, then counts as quota exhausted: the fit check waits (job stays PENDING) and unanswered fields → draft. Never a guess. Tests use a fake clock. |
 | D9 | Fit rule | The LLM returns a verdict (`strong` / `ok` / `stretch` / `mismatch`) plus a 0–100 score, matched keywords and a reason. Only verdicts in `settings.fit_skip` (default `[mismatch]`) → SKIPPED(fit). The score only orders the queue and never decides a skip. Calibrated at Checkpoint B on ~20 real jobs. |
@@ -121,8 +121,9 @@ is `ruff check . && pytest`, plus the manual check listed.
 - Job description text from the Greenhouse, Lever and Workday public JSON endpoints
 - `llm.py`: provider interface + Gemini Flash client, rate limiter, daily call budget, 429 →
   one retry then quota-exhausted (D7, D10). The `anthropic` dependency is removed
-- Deterministic skills pre-filter: no overlap between the resume skills and the JD →
-  `mismatch` without an LLM call, labeled as a keyword verdict
+- Fit checks are batched (8 jobs per call). A keyword pre-filter was tried and removed at
+  Checkpoint B: generic descriptions (HPE, GlobalFoundries) name no technologies, so it dropped
+  real new-grad roles while saving almost no calls
 - Fit result `{verdict, score, matched_keywords, reason}` via structured output on Gemini
   Flash. The prompt defines each verdict (D9). Quota exhausted → the job stays PENDING
 - Verdict in `settings.fit_skip` (default `[mismatch]`) → SKIPPED(fit). The score only orders the

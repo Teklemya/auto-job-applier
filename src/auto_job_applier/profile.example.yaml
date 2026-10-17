@@ -67,10 +67,6 @@ settings:
   # Fit verdicts that skip a job: strong | ok | stretch | mismatch. Add stretch to be pickier.
   fit_skip: [mismatch]
 
-# Skills from your resume. A long job description that mentions none of them is skipped
-# without an LLM call. Leave empty to send every job to the LLM.
-skills: [Python, Java, JavaScript, TypeScript, React, SQL, AWS, Docker]
-
 # Gemini free tier (needs GEMINI_API_KEY from aistudio.google.com). Quotas are per model;
 # check yours at https://ai.dev/rate-limit. Omit this section to keep the defaults:
 # llm:

@@ -1,9 +1,8 @@
 """LLM fit check (R8, D9) for jobs that passed the hard filters.
 
-Each PENDING job gets its description fetched once and a verdict recorded once. A deterministic
-skills pre-filter settles clear mismatches without an LLM call, and the rest are judged several
-jobs per call (D7, D10). Verdicts listed in `settings.fit_skip` mark the job SKIPPED; the score
-only orders the queue.
+Each PENDING job gets its description fetched once and a verdict recorded once. Jobs are judged
+several per call to stay inside the free quota (D10). Verdicts listed in `settings.fit_skip`
+mark the job SKIPPED; the score only orders the queue.
 """
 
 import re
@@ -19,8 +18,6 @@ from .models import Fit, Job, Status
 from .profile import FitVerdict, Profile
 from .store import JobStore
 
-# A description shorter than this says too little to rule a job out on keywords alone.
-MIN_WORDS_FOR_KEYWORD_SKIP = 150
 MAX_JD_CHARS = 6_000  # per job; a batch of 8 stays far under the token limits
 _JOB_HEADER = re.compile(r"^### Job (\d+)$", re.M)
 
@@ -63,24 +60,6 @@ class FitRun:
     counts: Counter[str] = field(default_factory=Counter)
     results: list[tuple[Job, Fit]] = field(default_factory=list)
     stopped: str | None = None  # why the run ended early (quota)
-
-
-def _skill_pattern(skill: str) -> re.Pattern[str]:
-    # Word boundaries that still work for "C++", "C#", ".NET", "Node.js" ("Go" ≠ "Golang",
-    # but "C++17" is C++).
-    tail = r"(?!\w)" if skill[-1:].isalnum() else ""
-    return re.compile(rf"(?<![\w.+#]){re.escape(skill)}{tail}", re.I)
-
-
-def matched_skills(skills: list[str], text: str) -> list[str]:
-    return [s for s in skills if _skill_pattern(s).search(text)]
-
-
-def keyword_verdict(skills: list[str], jd: str) -> Fit | None:
-    """`mismatch` when a substantial description mentions none of the skills; else None."""
-    if not skills or len(jd.split()) < MIN_WORDS_FOR_KEYWORD_SKIP or matched_skills(skills, jd):
-        return None
-    return Fit("mismatch", 0, [], "none of the resume skills appear in the description", "keyword")
 
 
 def job_ids_in(prompt: str) -> list[int]:
@@ -170,9 +149,6 @@ def screen_fit(
                 record(job, Fit(None, None, [], str(e), "none"))
                 continue
             store.save_description(job.id, jd)
-        if (kw := keyword_verdict(profile.skills, jd)) is not None:
-            record(job, kw)
-            continue
         queue.append((job, jd))
         if len(queue) >= profile.llm.fit_batch_size:
             flush()

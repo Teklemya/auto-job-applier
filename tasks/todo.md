@@ -13,7 +13,7 @@ Every task: `ruff check . && pytest` passes, plus its manual check.
 - [ ] Tests pass. `aja collect` on the live README; owner reviews the queue and SKIPPED reasons
 
 ## Phase 2: Brains (auto mode OK, stubbed LLM in tests)
-- [x] T4 JD fetch (Greenhouse/Lever/Workday public JSON) + Gemini Flash fit screen (llm.py provider + rate limiter + daily budget; skills pre-filter; verdict strong/ok/stretch/mismatch, skip only `fit_skip` verdicts, score for ordering; quota out → stays PENDING; at most once per job). `aja fit`. *Manual check (10 real jobs) waits on the owner's Gemini key*
+- [x] T4 JD fetch (Greenhouse/Lever/Workday public JSON) + Gemini Flash fit screen (llm.py provider + rate limiter + daily budget; batched 8/call; verdict strong/ok/stretch/mismatch, skip only `fit_skip` verdicts, score for ordering; quota out → stays PENDING; at most once per job). `aja fit`. *Manual check (10 real jobs) waits on the owner's Gemini key*
 - [x] T5 Answer resolver + D1 gate: profile → preferences → bank → LLM; sponsorship/auth always from profile (test-enforced)
 - [x] T6 Answer writer: cover letters and "why us" grounded in resume + JD; `confident:false` when facts are missing
 

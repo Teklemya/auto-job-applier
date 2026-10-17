@@ -94,7 +94,6 @@ def test_fit_and_llm_defaults(example_profile_data, write_profile):
     assert profile.llm.answers.daily_call_budget == 18
     assert profile.llm.answers.min_interval_seconds == 12.5  # 5 requests/minute
     assert profile.llm.fit_batch_size == 8
-    assert isinstance(profile.skills, list)
 
 
 def test_unknown_fit_verdict_is_a_clear_error(example_profile_data, write_profile):
