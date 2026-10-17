@@ -13,17 +13,17 @@ Every task: `ruff check . && pytest` passes, plus its manual check.
 - [ ] Tests pass. `aja collect` on the live README; owner reviews the queue and SKIPPED reasons
 
 ## Phase 2: Brains (auto mode OK, stubbed LLM in tests)
-- [x] T4 JD fetch (Greenhouse/Lever/Workday public JSON) + Gemini Flash fit screen (llm.py provider + rate limiter + daily budget; batched 8/call; verdict strong/ok/stretch/mismatch, skip only `fit_skip` verdicts, score for ordering; quota out → stays PENDING; at most once per job). `aja fit`. *Manual check (10 real jobs) waits on the owner's Gemini key*
+- [x] T4 JD fetch (Greenhouse/Lever/Workday public JSON) + Gemini Flash fit screen (llm.py provider + rate limiter + daily budget; batched 8/call; verdict strong/ok/stretch/mismatch, skip only `fit_skip` verdicts, score for ordering; quota out → stays PENDING; at most once per job). `aja fit`. Manual check done at Checkpoint B
 - [x] T5 Answer resolver + D1 gate: profile → preferences → bank → LLM; sponsorship/auth always from profile (test-enforced)
 - [x] T6 Answer writer: cover letters and "why us" grounded in resume + JD; `confident:false` when facts are missing
 
 ### Checkpoint B
-- [ ] Owner reads 5 generated cover letters / "why us" answers and approves the tone
-- [ ] Owner reviews fit verdicts for ~20 real jobs (every `mismatch` included) and confirms `fit_skip`
+- [x] Owner reads 5 generated cover letters / "why us" answers and approves the tone (2026-10-17)
+- [x] Owner reviews fit verdicts for ~20 real jobs (every `mismatch` included) and confirms `fit_skip` (71 reviewed; citizenship rule added, keyword pre-filter removed)
 
 ## Owner prerequisites (before Phase 3)
 - [ ] Resume PDF + filled `~/.auto-job-applier/profile.yaml`
-- [ ] Gemini API key (Google AI Studio, free tier)
+- [x] Gemini API key (Google AI Studio, free tier), in the Keychain
 - [ ] Workday email + password in macOS Keychain
 - [ ] `aja login` → sign into Jobright once
 
