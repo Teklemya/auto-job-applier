@@ -5,7 +5,7 @@ Every task: `ruff check . && pytest` passes, plus its manual check.
 **Shadow mode stays ON until the owner turns it off. No agent ever flips it.**
 
 ## Phase 1: Foundation (auto mode OK, no real sites)
-- [ ] T1 Scaffold + store + profile: `aja init`, profile validation errors, store transitions log events
+- [x] T1 Scaffold + store + profile: `aja init`, profile validation errors, store transitions log events
 - [ ] T2 SimplifyJobs collector: HTML-table parser (SWE section, `↳`, 🔒, flags), canonical URLs, ATS detection, idempotent ingest
 - [ ] T3 Hard filters + dedupe: 🛂/🇺🇸/senior+ → SKIPPED(reason), location priority, cross-source dedupe
 

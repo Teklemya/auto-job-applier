@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+dist/
+*.egg-info/
+
+# Personal data lives in ~/.auto-job-applier, but guard against strays
+profile.yaml
+*.db
+*.pdf

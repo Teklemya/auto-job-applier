@@ -1,0 +1,66 @@
+# auto-job-applier profile. Lives at ~/.auto-job-applier/profile.yaml. Never commit it.
+# Every answer the tool gives on your behalf starts here. Validate with: aja check
+
+contact:
+  first_name: Jane
+  last_name: Doe
+  preferred_name: null
+  email: jane.doe@example.com
+  phone: "555-555-0100"
+  phone_device_type: Mobile
+
+address:
+  line1: 123 Main St
+  line2: ""
+  city: Kansas City
+  state: MO
+  postal_code: "64105"
+  country: United States
+
+links:
+  linkedin: https://www.linkedin.com/in/janedoe
+  github: https://github.com/janedoe
+  portfolio: null
+
+work_authorization:
+  authorized_to_work_us: true
+  requires_sponsorship_now: false
+  requires_sponsorship_future: false
+  visa_status: F-1 OPT
+
+education:
+  - school: Example University
+    degree: Bachelor of Science
+    major: Computer Science
+    graduation: "2024-05"
+    gpa: null
+
+experience:
+  current_company: Example Corp
+  current_title: Software Engineer
+  years_experience: 1
+
+# Voluntary self-identification. Each value is answered verbatim when a form asks.
+demographics:
+  gender: Decline to self-identify
+  race_ethnicity: Decline to self-identify
+  hispanic_latino: Decline to self-identify
+  veteran_status: Decline to self-identify
+  disability_status: Decline to self-identify
+
+preferences:
+  start_date: Two weeks after offer
+  heard_about_us: Job board
+  salary_floor: 120000
+  willing_to_relocate: true
+
+targeting:
+  # Companies you'd take an on-site/hybrid role at in SF, Seattle, NYC, Boston or DMV.
+  big_companies: []
+
+settings:
+  # Shadow mode: false = draft everything, submit nothing. Only you change this.
+  submit: false
+  daily_submit_cap: 3
+
+resume_path: ~/.auto-job-applier/resume.pdf
