@@ -1,6 +1,6 @@
 # Intent: auto-job-applier
 
-Status: **Confirmed** (2026-10-17). Upstream of the spec. Change this only by explicit agreement.
+Status: **Confirmed** (2026-10-17; revised 2026-10-17 at Checkpoint A: 🎓 skipped, hubs = any company). Upstream of the spec. Change this only by explicit agreement.
 
 ## Outcome
 A personal pipeline that applies to jobs without the owner watching. It collects matching roles
@@ -26,17 +26,19 @@ more than perfect fit.
 
 ## Fit filter
 - **Titles:** new-grad and early-career SWE (SWE I/II, Backend, Full-stack, New Grad). Resume
-  keywords must match the job description. 🎓 (advanced degree) roles are **included**.
+  keywords must match the job description.
 - **Location priority:**
   1. Remote
   2. Kansas City metro, on-site or hybrid (e.g. Garmin, Olathe)
-  3. Big, well-known companies in major hubs (SF, Seattle, NYC, Boston, DMV). "Big" means
-     SimplifyJobs' 🔥 FAANG+ flag plus a company list the owner can edit.
+  3. **Any company** in a major US tech hub: SF Bay Area, Seattle, NYC, Boston, DMV, plus
+     other major hubs (LA, Austin, Dallas, Chicago, Denver, Atlanta, etc.). The city list is
+     owner-editable.
 - **Hard skip:**
   - senior and above
   - 🛂 (no sponsorship): these are usually government-adjacent employers with a strict I-9
     process
   - 🇺🇸 (citizenship required)
+  - 🎓 (advanced degree required): the owner has a bachelor's degree
   - duplicates: never apply to the same company and role twice, even across sources
 
 ## Answering
@@ -67,7 +69,7 @@ its link.
 ## Out of scope (v1)
 - Teaching the tool new portals by demonstration (e.g. Amazon): future feature
 - Ashby, iCIMS, Oracle, SmartRecruiters and custom career sites
-- On-site roles outside KC that are not at big-name companies
+- On-site roles outside KC and the hub cities
 - Interview scheduling and follow-ups
 - Any dashboard beyond the review list
 

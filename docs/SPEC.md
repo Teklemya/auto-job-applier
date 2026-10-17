@@ -26,14 +26,18 @@ almost no screen time spent applying. The goal is interview flow, for practice a
   Greenhouse, Lever, otherwise MANUAL.
 
 ### Screen
-- **R4** Hard skip: senior and above, 🛂, 🇺🇸. 🎓 roles are **kept**.
+- **R4** Hard skip: senior and above, 🛂, 🇺🇸, 🎓 (owner has a bachelor's only).
 - **R5** Titles: new-grad and early-career SWE (SWE I/II, Backend, Full-stack, New Grad).
-- **R6** Location priority: remote > KC metro on-site/hybrid > big, well-known companies (🔥 or
-  an owner-editable list) in SF, Seattle, NYC, Boston, DMV. Anything else is skipped.
-- **R7** Never apply to the same company + role twice, including across sources.
+- **R6** Location priority: remote > KC metro on-site/hybrid > **any company** in a major US
+  tech hub (owner-editable city list) > bare "United States" (location unknown). Anything else,
+  including non-US, is skipped.
+- **R7** Never apply to the same company + role twice, including across sources. A fillable
+  posting takes the role over from an unsupported-site (MANUAL) copy.
 - **R8** LLM fit check (resume keywords vs. job description) with a score and a reason. Below
   the threshold → skip.
-- **R9** Skipped and MANUAL jobs are recorded with a reason, never silently dropped.
+- **R9** Skipped and MANUAL jobs are recorded with a reason, never silently dropped. Jobs not yet
+  in flight are re-screened when their flags or location change, and postings that vanish from
+  the source (closed) are retired as SKIPPED. An empty parse is an error, never "all closed".
 
 ### Answer
 - **R10** Resolution order for every form field: profile → preferences → answer bank → LLM.
@@ -85,7 +89,7 @@ almost no screen time spent applying. The goal is interview flow, for practice a
 ## Out of scope (v1)
 - Teaching new portals by demonstration
 - Ashby, iCIMS, Oracle, SmartRecruiters and custom career sites (these are MANUAL)
-- Non-hub on-site roles outside KC
+- On-site roles outside KC and the hub cities
 - Interview scheduling and follow-ups
 - Any dashboard beyond the review list
 - GitHub Actions and cloud hosting
