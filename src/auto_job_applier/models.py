@@ -17,7 +17,7 @@ class Tier(StrEnum):
 
     REMOTE = "1-remote"
     KC_METRO = "2-kc-metro"
-    BIG_HUB = "3-big-hub"
+    HUB = "3-hub"  # any company in a US tech hub
     US_UNSPECIFIED = "4-us-unspecified"  # bare "United States": location unknown
 
 

@@ -54,9 +54,11 @@ preferences:
   salary_floor: 120000
   willing_to_relocate: true
 
-targeting:
-  # Companies you'd take an on-site/hybrid role at in SF, Seattle, NYC, Boston or DMV.
-  big_companies: []
+# Screening locations. Remote always passes. Omit a list to keep the built-in defaults
+# (see `Targeting` in profile.py); set it to replace them.
+targeting: {}
+  # kc_metro: [Kansas City, Overland Park, Olathe, ...]
+  # hubs: [SF, Seattle, NYC, Boston, Austin, Chicago, ...]   # any company in these cities
 
 settings:
   # Shadow mode: false = draft everything, submit nothing. Only you change this.

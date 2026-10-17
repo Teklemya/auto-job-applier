@@ -7,7 +7,7 @@ Every task: `ruff check . && pytest` passes, plus its manual check.
 ## Phase 1: Foundation (auto mode OK, no real sites)
 - [x] T1 Scaffold + store + profile: `aja init`, profile validation errors, store transitions log events
 - [x] T2 SimplifyJobs collector: HTML-table parser (SWE section, `↳`, 🔒, flags), canonical URLs, ATS detection, idempotent ingest
-- [x] T3 Hard filters + dedupe: 🛂/🇺🇸/senior+ → SKIPPED(reason), location priority, cross-source dedupe
+- [x] T3 Hard filters + dedupe: 🛂/🇺🇸/🎓/senior+ → SKIPPED(reason), location priority (remote > KC > any company in US hubs), cross-source dedupe
 
 ### Checkpoint A
 - [ ] Tests pass. `aja collect` on the live README; owner reviews the queue and SKIPPED reasons
@@ -21,13 +21,14 @@ Every task: `ruff check . && pytest` passes, plus its manual check.
 - [ ] Owner reads 5 generated cover letters / "why us" answers and approves the tone
 
 ## Owner prerequisites (before Phase 3)
-- [ ] Resume PDF + filled `~/.auto-job-applier/profile.yaml` + big-company list
+- [ ] Resume PDF + filled `~/.auto-job-applier/profile.yaml`
 - [ ] Anthropic API key
 - [ ] Workday email + password in macOS Keychain
 - [ ] `aja login` → sign into Jobright once
 
 ## Phase 3: Real sites (supervised, shadow mode forced on)
-- [ ] T7 Browser + Greenhouse engine + `aja review` (re-fill under 10s, highlight blockers, save to answer bank)
+- [ ] T11 Jobright collector (moved up): browser profile + `aja login`, Liked + >80% match → final ATS URL → filters
+- [ ] T7 Greenhouse engine + `aja review` (re-fill under 10s, highlight blockers, save to answer bank)
 - [ ] T8 Lever engine
 - [ ] T9a Workday auth: sign in or create the account (Keychain); verification wall → STAGED
 - [ ] T9b Workday wizard + native draft: reach Review; gate fail → Save for later
@@ -37,7 +38,6 @@ Every task: `ruff check . && pytest` passes, plus its manual check.
 
 ## Phase 4: Autonomy
 - [ ] T10 Submit path: confirm the success page before APPLIED, daily cap, screenshots
-- [ ] T11 Jobright collector: Liked + >80% match → final ATS URL → filters
 - [ ] T12 Scheduling + notifications: launchd at 8am and 2pm, catch-up on wake, lock, macOS summary
 - [ ] T13 Salary lookup: `web_search` range cache, $120k floor
 

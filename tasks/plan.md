@@ -49,11 +49,11 @@ and Workday share all the answering logic, and v2's "teach a new portal" only ne
 | `cli.py` | Typer entry point `aja`: `init`, `collect`, `run`, `review`, `list`, `stats`, `mark`, `login` |
 | `store.py` | SQLite (stdlib). Tables: `jobs`, `answer_packets`, `answer_bank`, `salary_cache`, `events` (audit log) |
 | `models.py` | `Job`, `Status`, `ATS`, `FormField`, `ResolvedAnswer` |
-| `profile.py` | Pydantic schema + YAML loader: facts, preferences, EEO, resume path, big-company list |
+| `profile.py` | Pydantic schema + YAML loader: facts, preferences, EEO, resume path, location targeting |
 | `sources/simplify.py` | Parse the **HTML** tables in the SWE section. Handle `↳` (same company as the previous row) and 🔒 (closed). Take the flags 🛂 🇺🇸 🎓 🔥 from the company and role cells, and strip `utm_*`/`ref` from links. |
 | `sources/jobright.py` | Browser read of the Liked and recommended pages, and resolve each link to its final ATS URL |
 | `sources/ats_detect.py` | Domain → ATS (Workday, Greenhouse, Lever, else MANUAL) |
-| `screen.py` | Hard filters (🛂, 🇺🇸, senior+ regex, location priority: remote > KC metro > 🔥 or big-company list in hubs), cross-source dedupe on canonical URL and company+normalized title. Then fetch the job description and run the LLM fit check. |
+| `screen.py` | Hard filters (🛂, 🇺🇸, senior+ regex, 🎓, location priority: remote > KC metro > any company in a US tech hub), cross-source dedupe on canonical URL and company+normalized title. Then fetch the job description and run the LLM fit check. |
 | `jd_fetch.py` | Job description text from public endpoints: Greenhouse boards API, Lever postings API, Workday `cxs` JSON. No browser needed. |
 | `answers/resolver.py` | The resolution order above, plus the D1 gate |
 | `answers/writer.py` | LLM-written cover letters and "why us" answers from the resume and the JD, in a human tone |
@@ -79,7 +79,7 @@ in review instead of disappearing.
 - Personal data lives in `~/.auto-job-applier/` and never in the repo.
 
 ## Owner prerequisites (needed before Phase 3; Phases 1–2 don't need them)
-- Resume PDF, filled-in `~/.auto-job-applier/profile.yaml`, and the big-company list
+- Resume PDF and a filled-in `~/.auto-job-applier/profile.yaml`
 - Anthropic API key (`ANTHROPIC_API_KEY` or `ant auth login`)
 - A single Workday email + password, stored in the macOS Keychain
 - One-time `aja login` to sign into Jobright in the tool's browser profile
@@ -106,9 +106,9 @@ is `ruff check . && pytest`, plus the manual check listed.
 - *Manual:* `aja collect` on the live README produces a sensible job count by ATS
 
 **T3 Hard filters + dedupe** (S). Files: `screen.py`
-- 🛂, 🇺🇸 and senior+ titles → SKIPPED with a reason
-- Location priority: remote > KC metro (Olathe, Overland Park, etc.) > 🔥 or big-company list in
-  hubs, else SKIPPED
+- 🛂, 🇺🇸, 🎓 and senior+ titles → SKIPPED with a reason
+- Location priority: remote > KC metro (Olathe, Overland Park, etc.) > any company in a US tech
+  hub > bare "United States", else SKIPPED
 - Cross-source dedupe on canonical URL or company + normalized title
 - *Manual:* spot-check `aja list --status SKIPPED` reasons for 20 rows
 
@@ -136,8 +136,12 @@ is `ruff check . && pytest`, plus the manual check listed.
 ### Checkpoint B: the owner reads 5 generated cover letters and "why us" answers and approves the tone
 
 ### Phase 3: Real sites (supervised, shadow mode forced on)
-**T7 Browser + Greenhouse engine + `aja review`** (L→ keep tight). Files: `browser.py`,
-`engines/base.py`, `engines/greenhouse.py`, `cli.py`
+**T11 Jobright collector** (M), moved up at Checkpoint A because Jobright is the main source of
+fresh postings. Files: `browser.py`, `sources/jobright.py`. Persistent browser profile with
+`aja login`. Read the Liked and recommended (>80%) pages, resolve each to its final ATS URL, and
+feed into T3. *Manual:* one live read whose jobs appear in `aja list` with correct ATS.
+
+**T7 Greenhouse engine + `aja review`** (M). Files: `engines/base.py`, `engines/greenhouse.py`, `cli.py`
 - Extracts `FormField`s from saved HTML fixtures and a live form, fills them, uploads the resume
 - A visible CAPTCHA, validation errors, or the gate failing → STAGED with a stored packet
 - `aja review` re-fills a STAGED job in under 10 seconds, highlights the blocking fields, and
@@ -158,9 +162,6 @@ Review. On gate failure, "Save and continue later". *Manual:* 2 live tenants rea
 **T10 Submit path** (S). Gate pass + `submit: true` → submit, then confirm the success page
 before marking APPLIED. Daily cap and a screenshot per action. Shadow mode can only be turned off
 by the owner editing the config.
-
-**T11 Jobright collector** (M). Read the Liked and recommended (>80%) pages, resolve each to its
-final ATS URL, and feed into T3.
 
 **T12 Scheduling + notifications** (S). Files: `notify.py`, `launchd/*.plist`, `aja schedule`.
 Runs at 8am and 2pm and catches up on wake, a lock file prevents overlap, and each run ends

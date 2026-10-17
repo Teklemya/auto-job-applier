@@ -32,6 +32,7 @@ _US_UNSPECIFIED = {"united states", "usa", "us"}
 _FLAG_SKIPS = {
     "no_sponsorship": "no sponsorship (🛂)",
     "us_citizenship": "citizenship required (🇺🇸)",
+    "advanced_degree": "advanced degree required (🎓)",
 }
 # Statuses that claim a company+role, so later postings of it are duplicates.
 _CLAIMED = (Status.PENDING, Status.STAGED, Status.APPLIED, Status.FAILED, Status.MANUAL)
@@ -44,13 +45,19 @@ class Verdict:
     tier: Tier | None = None
 
 
-def _matches_any(text: str, names: list[str]) -> bool:
-    return any(re.search(rf"(?<!\w){re.escape(n)}(?!\w)", text, re.I) for n in names)
+def _matches_any(loc: str, names: list[str]) -> bool:
+    city = loc.split(",")[0].strip().lower()
+    for n in names:
+        if len(n) <= 3:
+            if city == n.lower():
+                return True
+        elif re.search(rf"(?<!\w){re.escape(n)}(?!\w)", loc, re.I):
+            return True
+    return False
 
 
 def _location_tier(job: Job, t: Targeting) -> Tier | None:
     locations = [loc for loc in job.location.split("; ") if loc]
-    is_big = "faang" in job.flags or job.company.lower() in {c.lower() for c in t.big_companies}
     tiers = []
     for loc in locations:
         if _NON_US.search(loc):
@@ -59,8 +66,8 @@ def _location_tier(job: Job, t: Targeting) -> Tier | None:
             tiers.append(Tier.REMOTE)
         elif _matches_any(loc, t.kc_metro):
             tiers.append(Tier.KC_METRO)
-        elif is_big and _matches_any(loc, t.hubs):
-            tiers.append(Tier.BIG_HUB)
+        elif _matches_any(loc, t.hubs):
+            tiers.append(Tier.HUB)
         elif loc.strip().lower() in _US_UNSPECIFIED:
             tiers.append(Tier.US_UNSPECIFIED)
     # Workday often encodes remote only in the URL, e.g. ".../job/Remote-California/..."

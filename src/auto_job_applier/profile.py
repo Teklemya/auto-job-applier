@@ -80,9 +80,8 @@ class Preferences(_Strict):
 
 
 class Targeting(_Strict):
-    """Location and company preferences for screening (R6)."""
+    """Location preferences for screening (R6). Edit freely in profile.yaml."""
 
-    big_companies: list[str] = []  # owner-editable "well-known" list, beyond 🔥 FAANG+
     kc_metro: list[str] = [
         "Kansas City",
         "Overland Park",
@@ -94,30 +93,88 @@ class Targeting(_Strict):
         "Leawood",
         "Lawrence",
     ]
+    # Any company in these US tech hubs. Names of 3 letters or fewer (SF, NYC, LA) must be
+    # the whole city part of a location, so "New Orleans, LA" doesn't read as Los Angeles.
     hubs: list[str] = [
+        # Bay Area
         "San Francisco",
         "SF",
         "Bay Area",
-        "Santa Clara",
-        "Cupertino",
-        "Redwood City",
         "Palo Alto",
         "Mountain View",
         "Sunnyvale",
         "San Jose",
+        "Santa Clara",
+        "Cupertino",
         "Menlo Park",
+        "Redwood City",
+        "San Mateo",
+        "Foster City",
+        "Burlingame",
+        "South San Francisco",
+        "Fremont",
+        "Milpitas",
+        "Oakland",
+        # Seattle
         "Seattle",
         "Bellevue",
         "Redmond",
+        "Kirkland",
+        # New York
         "New York",
         "NYC",
+        "Brooklyn",
+        "Jersey City",
+        "Hoboken",
+        # Boston
         "Boston",
         "Cambridge",
+        # DMV (not the clearance-heavy Fort Meade / Annapolis Junction corridor)
         "Washington, DC",
         "Arlington, VA",
+        "Alexandria",
         "McLean",
+        "Tysons",
         "Reston",
+        "Herndon",
+        "Vienna, VA",
+        "Fairfax",
+        "Chantilly",
         "Bethesda",
+        "Rockville",
+        # Other major hubs
+        "Los Angeles",
+        "LA",
+        "Santa Monica",
+        "Irvine",
+        "San Diego",
+        "Austin",
+        "Dallas",
+        "Plano",
+        "Richardson",
+        "Irving",
+        "Frisco",
+        "Houston",
+        "Chicago",
+        "Denver",
+        "Boulder",
+        "Centennial",
+        "Broomfield",
+        "Atlanta",
+        "Alpharetta",
+        "Raleigh",
+        "Durham",
+        "Charlotte",
+        "Pittsburgh",
+        "Philadelphia",
+        "Salt Lake City",
+        "Lehi",
+        "Portland",
+        "Miami",
+        "Minneapolis",
+        "Phoenix",
+        "Scottsdale",
+        "Tempe",
     ]
 
 

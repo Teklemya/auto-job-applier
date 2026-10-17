@@ -5,7 +5,7 @@ from auto_job_applier.profile import Targeting
 from auto_job_applier.screen import Tier, hard_filter, screen_new
 from auto_job_applier.store import JobStore
 
-T = Targeting(big_companies=["Stripe"])
+T = Targeting()
 
 
 def job(role="Software Engineer I", company="Acme", location="Remote in USA", flags=(), **kw):
@@ -21,15 +21,15 @@ def job(role="Software Engineer I", company="Acme", location="Remote in USA", fl
 
 @pytest.mark.parametrize(
     ("flag", "reason"),
-    [("no_sponsorship", "no sponsorship"), ("us_citizenship", "citizenship required")],
+    [
+        ("no_sponsorship", "no sponsorship"),
+        ("us_citizenship", "citizenship required"),
+        ("advanced_degree", "advanced degree"),  # owner has a bachelor's only
+    ],
 )
 def test_flag_skips(flag, reason):
     v = hard_filter(job(flags=[flag]), T)
     assert v.status is Status.SKIPPED and reason in v.reason
-
-
-def test_advanced_degree_is_kept():
-    assert hard_filter(job(flags=["advanced_degree"]), T).status is Status.PENDING
 
 
 @pytest.mark.parametrize(
@@ -75,8 +75,15 @@ def test_early_career_titles_are_kept(role):
         ("Remote", "Acme", [], Tier.REMOTE),
         ("Olathe, KS", "Garmin", [], Tier.KC_METRO),
         ("Kansas City, MO", "Acme", [], Tier.KC_METRO),
-        ("SF", "NVIDIA", ["faang"], Tier.BIG_HUB),
-        ("NYC", "Stripe", [], Tier.BIG_HUB),  # owner's big_companies list
+        ("SF", "NVIDIA", ["faang"], Tier.HUB),
+        ("SF", "Unknown Startup", [], Tier.HUB),  # any company counts in a hub
+        ("NYC", "Acme", [], Tier.HUB),
+        ("Austin, TX", "Acme", [], Tier.HUB),
+        ("Chicago, IL", "Acme", [], Tier.HUB),
+        ("LA", "Acme", [], Tier.HUB),
+        ("Alpharetta, GA", "Acme", [], Tier.HUB),  # Atlanta metro
+        ("San Mateo, CA", "Acme", [], Tier.HUB),  # Bay Area suburb
+        ("Vienna, VA", "Acme", [], Tier.HUB),  # DMV
         ("Seattle, WA; Remote in USA", "Acme", [], Tier.REMOTE),  # best location wins
         ("United States", "Acme", [], Tier.US_UNSPECIFIED),
     ],
@@ -91,8 +98,9 @@ def test_location_tiers(location, company, flags, tier):
     [
         ("Remote in Canada", "Acme", []),
         ("London, UK", "Acme", ["faang"]),
-        ("SF", "Unknown Startup", []),  # hub, but not a big company
-        ("Austin, TX", "Google", ["faang"]),  # big company, not a listed hub
+        ("Cedar Rapids, IA", "RTX", []),  # not a hub
+        ("New Orleans, LA", "Acme", []),  # "LA" here is Louisiana, not Los Angeles
+        ("Annapolis Junction, MD", "Acme", []),  # clearance-heavy NSA corridor, not DMV list
         ("O'Fallon, MO", "Mastercard", []),  # Missouri, but St. Louis, not KC
     ],
 )
