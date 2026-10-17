@@ -18,17 +18,17 @@ Running out of quota is treated like any other missing answer. The fit check wai
 stays PENDING; unresolved fields make the job a draft. Throughput drops, but the pipeline never
 guesses and never pays.
 
-## Free-tier budget (owner-reported, Gemini Flash)
-| Metric | Quota | Our setting |
-|---|---|---|
-| RPD | ~1,500/day | daily call budget 300 (runaway-loop breaker) |
-| RPM | 15/min | rate limiter, min ~4.5s between calls |
-| TPM | 1M/min | not a constraint at our sizes |
-| Cost | $0, no card | — |
+## Free-tier budget (measured in AI Studio, 2026-10-17)
+The first live run hit `limit: 20, model: gemini-3.8-flash` after 13 checks: the ~1,500/day
+figure did not hold. Quotas are per model:
 
-Third-party reports in 2026 range from 5–15 RPM and 100–1,500 RPD, and Google cut free quotas
-twice this year. All limits are settings, not code. A 429 gets one backoff retry, then counts as
-quota exhausted.
+| Model | Free quota | Used for | Our setting |
+|---|---|---|---|
+| `gemini-3.5-flash-lite` | 500/day, 15/min | fit checks, 8 jobs per call | budget 450, 4.5s apart, minimal thinking |
+| `gemini-3.8-flash` | 20/day, 5/min | form answers, cover letters | budget 18, 12.5s apart |
+
+All limits are settings, not code. A 429 or 5xx gets one backoff retry, then counts as quota
+exhausted.
 
 ## Key Assumptions to Validate
 - [ ] Gemini Flash's `confident` flag is reliable. Test: in the shadow week, check every

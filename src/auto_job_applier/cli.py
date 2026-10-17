@@ -109,7 +109,7 @@ def fit(
     store = _store()
     try:
         profile = load_profile(paths.profile_path())
-        run = screen_fit(store, profile, make_llm(profile, store), fetch_description, limit)
+        run = screen_fit(store, profile, make_llm(profile, store, "fit"), fetch_description, limit)
     except (ProfileError, LLMError) as e:
         typer.echo(str(e), err=True)
         raise typer.Exit(1) from e
@@ -143,7 +143,7 @@ def write(
             store.save_description(job_id, jd)
         label = f"Why do you want to work at {job.company}?" if why else "Cover Letter"
         field = FormField(label, "textarea", required=True)
-        answer = make_writer(profile, make_llm(profile, store))(field, job, jd)
+        answer = make_writer(profile, make_llm(profile, store, "answers"))(field, job, jd)
     except (ProfileError, LLMError, FetchError, PostingClosed, Unsupported) as e:
         typer.echo(str(e), err=True)
         raise typer.Exit(1) from e

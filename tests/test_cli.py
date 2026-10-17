@@ -121,9 +121,17 @@ def test_fit_prints_each_verdict(aja_home, example_profile_data, monkeypatch):
 
     class Model:
         def generate(self, **kw):
-            return fit.FitAnswer(verdict="ok", score=70, matched_keywords=["Go"], reason="fine")
+            ids = fit.job_ids_in(kw["prompt"])
+            return fit.FitBatch(
+                results=[
+                    fit.FitItem(
+                        id=i, verdict="ok", score=70, matched_keywords=["Go"], reason="fine"
+                    )
+                    for i in ids
+                ]
+            )
 
-    monkeypatch.setattr(cli, "make_llm", lambda profile, store: Model())
+    monkeypatch.setattr(cli, "make_llm", lambda profile, store, role: Model())
     monkeypatch.setattr(cli, "fetch_description", lambda job: "Backend services in Python. " * 200)
     _collect_and_profile(aja_home, example_profile_data)
     result = runner.invoke(app, ["fit", "--limit", "2"])
@@ -146,7 +154,7 @@ def test_write_prints_a_cover_letter_for_a_job(aja_home, example_profile_data, m
                 text="Dear NVIDIA hiring team, hi.", confident=True, missing_facts=[]
             )
 
-    monkeypatch.setattr(cli, "make_llm", lambda profile, store: Model())
+    monkeypatch.setattr(cli, "make_llm", lambda profile, store, role: Model())
     monkeypatch.setattr(cli, "fetch_description", lambda job: "Build GPU drivers in C++.")
     _collect_and_profile(aja_home, example_profile_data)
     job_id = next(

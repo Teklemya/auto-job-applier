@@ -25,6 +25,9 @@ def profile(example_profile_data, write_profile):
 
 
 class FakeLLM:
+    """Each queued answer is an Exception (raised) or a FitAnswer given to every job id the
+    batched prompt contains."""
+
     def __init__(self, *answers):
         self.answers = list(answers)
         self.calls = []
@@ -34,7 +37,8 @@ class FakeLLM:
         a = self.answers.pop(0)
         if isinstance(a, Exception):
             raise a
-        return a
+        ids = fit.job_ids_in(kw["prompt"])
+        return fit.FitBatch(results=[fit.FitItem(id=i, **a.model_dump()) for i in ids])
 
 
 def answer(verdict="ok", score=60, reason="decent overlap"):
@@ -100,7 +104,7 @@ def test_ok_fit_stays_pending_and_is_recorded(store, profile):
     [call] = model.calls
     assert call["attachments"] == [(profile.resume_path.read_bytes(), "application/pdf")]
     assert "Acme0" in call["prompt"] and JD_PYTHON[:40] in call["prompt"]
-    assert call["schema"] is fit.FitAnswer
+    assert call["schema"] is fit.FitBatch
 
 
 def test_mismatch_is_skipped_with_reason(store, profile):
@@ -152,6 +156,7 @@ def test_reopened_job_with_recorded_mismatch_is_skipped_again(store, profile):
 
 
 def test_quota_exhausted_stops_and_leaves_jobs_pending(store, profile):
+    profile.llm.fit_batch_size = 1
     jobs = pending(store, 3)
     model = FakeLLM(answer("ok"), llm.QuotaExhausted("daily LLM budget used"))
     run = fit.screen_fit(store, profile, model, fetch=lambda j: JD_PYTHON)
@@ -202,16 +207,45 @@ def test_unsupported_description_passes_unchecked(store, profile):
 
 def test_limit_caps_new_checks(store, profile):
     pending(store, 3)
-    model = FakeLLM(answer(), answer(), answer())
+    model = FakeLLM(answer())
     run = fit.screen_fit(store, profile, model, fetch=lambda j: JD_PYTHON, limit=2)
     assert run.counts == {"checked": 2}
-    assert len(model.calls) == 2
+    assert len(fit.job_ids_in(model.calls[0]["prompt"])) == 2
 
 
 def test_bad_llm_output_skips_that_job_and_continues(store, profile):
+    profile.llm.fit_batch_size = 1
     jobs = pending(store, 2)
     model = FakeLLM(llm.LLMError("unusable output"), answer("ok"))
     run = fit.screen_fit(store, profile, model, fetch=lambda j: JD_PYTHON)
     assert run.counts == {"errors": 1, "checked": 1}
     assert store.get_fit(jobs[0].id) is None  # retried next run
     assert store.get_fit(jobs[1].id).verdict == "ok"
+
+
+def test_jobs_are_checked_in_batches(store, profile):
+    profile.llm.fit_batch_size = 8
+    jobs = pending(store, 10)
+    model = FakeLLM(answer(), answer())
+    run = fit.screen_fit(store, profile, model, fetch=lambda j: JD_PYTHON)
+    assert [len(fit.job_ids_in(c["prompt"])) for c in model.calls] == [8, 2]
+    assert run.counts == {"checked": 10}
+    assert all(store.get_fit(j.id).verdict == "ok" for j in jobs)
+
+
+def test_job_missing_from_batch_answer_is_retried_next_run(store, profile):
+    jobs = pending(store, 2)
+
+    class Partial:
+        def generate(self, **kw):
+            first = fit.job_ids_in(kw["prompt"])[0]
+            return fit.FitBatch(results=[fit.FitItem(id=first, **answer().model_dump())])
+
+    run = fit.screen_fit(store, profile, Partial(), fetch=lambda j: JD_PYTHON)
+    assert run.counts == {"checked": 1, "errors": 1}
+    assert store.get_fit(jobs[1].id) is None
+
+
+def test_rubric_treats_citizenship_and_clearance_as_mismatch():
+    assert "citizenship" in fit.SYSTEM and "clearance" in fit.SYSTEM
+    assert "mismatch" in fit.SYSTEM.split("citizenship")[0].rsplit("\n- ", 1)[-1]

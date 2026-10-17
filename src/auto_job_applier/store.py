@@ -69,11 +69,13 @@ CREATE TABLE IF NOT EXISTS answer_bank (
     updated_at    TEXT NOT NULL
 );
 
--- LLM calls per local day: the daily budget (D10) holds across runs.
-CREATE TABLE IF NOT EXISTS llm_usage (
-    day           TEXT PRIMARY KEY,
+-- LLM calls per local day and model: daily budgets (D10) hold across runs.
+CREATE TABLE IF NOT EXISTS llm_calls (
+    day           TEXT NOT NULL,
+    model         TEXT NOT NULL,
     calls         INTEGER NOT NULL DEFAULT 0,
-    rate_limited  INTEGER NOT NULL DEFAULT 0
+    rate_limited  INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (day, model)
 );
 """
 
@@ -293,19 +295,19 @@ class JobStore:
                 (key, question, value, _now()),
             )
 
-    def count_llm_call(self, day: str, rate_limited: bool = False) -> None:
+    def count_llm_call(self, day: str, model: str, rate_limited: bool = False) -> None:
         with self._conn:
             self._conn.execute(
-                "INSERT INTO llm_usage (day, calls, rate_limited) VALUES (?, 1, ?)"
-                " ON CONFLICT (day) DO UPDATE SET calls = calls + 1,"
+                "INSERT INTO llm_calls (day, model, calls, rate_limited) VALUES (?, ?, 1, ?)"
+                " ON CONFLICT (day, model) DO UPDATE SET calls = calls + 1,"
                 " rate_limited = rate_limited + excluded.rate_limited",
-                (day, int(rate_limited)),
+                (day, model, int(rate_limited)),
             )
 
-    def llm_usage(self, day: str) -> tuple[int, int]:
-        """(calls, rate-limited calls) made on `day`."""
+    def llm_usage(self, day: str, model: str) -> tuple[int, int]:
+        """(calls, rate-limited calls) made to `model` on `day`."""
         row = self._conn.execute(
-            "SELECT calls, rate_limited FROM llm_usage WHERE day = ?", (day,)
+            "SELECT calls, rate_limited FROM llm_calls WHERE day = ? AND model = ?", (day, model)
         ).fetchone()
         return (row["calls"], row["rate_limited"]) if row else (0, 0)
 

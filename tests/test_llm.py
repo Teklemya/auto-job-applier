@@ -49,6 +49,7 @@ def _budgeted(provider, store, clock, budget=5, interval=4.5):
     return llm.BudgetedLLM(
         provider,
         store,
+        name="m",
         daily_budget=budget,
         min_interval=interval,
         backoff=60,
@@ -87,7 +88,7 @@ def test_budget_is_shared_across_runs_via_the_store(store):
     _ask(_budgeted(FakeProvider(Answer(value="x")), store, clock, budget=1))
     with pytest.raises(llm.QuotaExhausted):
         _ask(_budgeted(FakeProvider(Answer(value="x")), store, clock, budget=1))
-    assert store.llm_usage("2026-10-17") == (1, 0)
+    assert store.llm_usage("2026-10-17", "m") == (1, 0)
 
 
 def test_rate_limit_retries_once_after_backoff(store):
@@ -95,7 +96,7 @@ def test_rate_limit_retries_once_after_backoff(store):
     provider = FakeProvider(llm.RateLimited("429"), Answer(value="ok"))
     assert _ask(_budgeted(provider, store, clock)).value == "ok"
     assert 60 in clock.slept
-    assert store.llm_usage("2026-10-17") == (2, 1)
+    assert store.llm_usage("2026-10-17", "m") == (2, 1)
 
 
 def test_persistent_rate_limit_is_quota_exhausted(store):
@@ -179,3 +180,57 @@ def test_gemini_overload_is_rate_limited(code):
     g = llm.GeminiProvider(model="m", client=_Client(err))
     with pytest.raises(llm.RateLimited):
         g.generate(system="s", prompt="p", schema=Answer)
+
+
+def test_budgets_are_per_model(store):
+    clock = FakeClock()
+    lite = llm.BudgetedLLM(
+        FakeProvider(Answer(value="x")),
+        store,
+        name="lite",
+        daily_budget=1,
+        min_interval=0,
+        clock=clock,
+        sleep=clock.sleep,
+        today=lambda: "2026-10-17",
+    )
+    flash = llm.BudgetedLLM(
+        FakeProvider(Answer(value="y")),
+        store,
+        name="flash",
+        daily_budget=1,
+        min_interval=0,
+        clock=clock,
+        sleep=clock.sleep,
+        today=lambda: "2026-10-17",
+    )
+    _ask(lite)
+    assert _ask(flash).value == "y"  # lite's budget doesn't touch flash's
+
+
+def test_gemini_thinking_level_is_passed():
+    client = _Client(_Resp(parsed=Answer(value="hi")))
+    llm.GeminiProvider(model="m", thinking="minimal", client=client).generate(
+        system="s", prompt="p", schema=Answer
+    )
+    assert client.models.kwargs["config"].thinking_config.thinking_level.value == "MINIMAL"
+
+
+def test_gemini_no_thinking_config_by_default():
+    client = _Client(_Resp(parsed=Answer(value="hi")))
+    llm.GeminiProvider(model="m", client=client).generate(system="s", prompt="p", schema=Answer)
+    assert client.models.kwargs["config"].thinking_config is None
+
+
+def test_make_llm_uses_the_roles_model(example_profile_data, write_profile, store, monkeypatch):
+    from auto_job_applier.profile import load_profile
+
+    monkeypatch.setenv("GEMINI_API_KEY", "test")
+    profile = load_profile(write_profile(example_profile_data))
+    fit_llm, answers_llm = (
+        llm.make_llm(profile, store, "fit"),
+        llm.make_llm(profile, store, "answers"),
+    )
+    assert fit_llm.provider.model == profile.llm.fit.model == "gemini-3.5-flash-lite"
+    assert answers_llm.provider.model == profile.llm.answers.model == "gemini-3.8-flash"
+    assert fit_llm.daily_budget == 450 and answers_llm.daily_budget == 18

@@ -10,7 +10,7 @@ import os
 import time
 from collections.abc import Callable
 from datetime import date
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Literal, Protocol
 
 from pydantic import BaseModel, ValidationError
 
@@ -45,7 +45,7 @@ class LLM(Protocol):
 
 
 class GeminiProvider:
-    def __init__(self, model: str, client=None):
+    def __init__(self, model: str, thinking: str | None = None, client=None):
         if client is None:
             if not (os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")):
                 raise LLMError(
@@ -55,7 +55,7 @@ class GeminiProvider:
             from google import genai
 
             client = genai.Client()
-        self.model, self.client = model, client
+        self.model, self.thinking, self.client = model, thinking, client
 
     def generate[M: BaseModel](
         self,
@@ -73,6 +73,11 @@ class GeminiProvider:
             response_mime_type="application/json",
             response_schema=schema,
             temperature=0.3,
+            thinking_config=(
+                types.ThinkingConfig(thinking_level=self.thinking.upper())
+                if self.thinking
+                else None
+            ),
         )
         try:
             resp = self.client.models.generate_content(
@@ -96,6 +101,7 @@ class BudgetedLLM:
         provider: LLM,
         store: "JobStore",
         *,
+        name: str,  # usage is counted per model: free quotas are per model
         daily_budget: int,
         min_interval: float,
         backoff: float = 60,  # one RPM window
@@ -103,7 +109,7 @@ class BudgetedLLM:
         sleep: Callable[[float], None] = time.sleep,
         today: Callable[[], str] = lambda: date.today().isoformat(),
     ):
-        self.provider, self.store = provider, store
+        self.provider, self.store, self.name = provider, store, name
         self.daily_budget, self.min_interval, self.backoff = daily_budget, min_interval, backoff
         self.clock, self.sleep, self.today = clock, sleep, today
         self._last: float | None = None
@@ -111,8 +117,10 @@ class BudgetedLLM:
     def generate[M: BaseModel](self, **kw) -> M:
         for attempt in range(2):
             day = self.today()
-            if self.store.llm_usage(day)[0] >= self.daily_budget:
-                raise QuotaExhausted(f"daily LLM budget of {self.daily_budget} calls used")
+            if self.store.llm_usage(day, self.name)[0] >= self.daily_budget:
+                raise QuotaExhausted(
+                    f"daily budget of {self.daily_budget} calls to {self.name} used"
+                )
             if self._last is not None:
                 wait = self._last + self.min_interval - self.clock()
                 if wait > 0:
@@ -121,24 +129,27 @@ class BudgetedLLM:
             try:
                 result = self.provider.generate(**kw)
             except RateLimited as e:
-                self.store.count_llm_call(day, rate_limited=True)
+                self.store.count_llm_call(day, self.name, rate_limited=True)
                 if attempt == 0:
                     self.sleep(self.backoff)
                     continue
                 raise QuotaExhausted(f"{e} (still failing after a retry)") from None
             except Exception:
-                self.store.count_llm_call(day)  # failed calls still use quota
+                self.store.count_llm_call(day, self.name)  # failed calls still use quota
                 raise
-            self.store.count_llm_call(day)
+            self.store.count_llm_call(day, self.name)
             return result
         raise AssertionError("unreachable")
 
 
-def make_llm(profile: "Profile", store: "JobStore") -> LLM:
-    s = profile.llm
+def make_llm(
+    profile: "Profile", store: "JobStore", role: Literal["fit", "answers"]
+) -> "BudgetedLLM":
+    s = profile.llm.fit if role == "fit" else profile.llm.answers
     return BudgetedLLM(
-        GeminiProvider(s.model),
+        GeminiProvider(s.model, s.thinking),
         store,
+        name=s.model,
         daily_budget=s.daily_call_budget,
         min_interval=s.min_interval_seconds,
     )

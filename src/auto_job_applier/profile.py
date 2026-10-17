@@ -142,12 +142,34 @@ class Settings(_Strict):
     fit_skip: list[FitVerdict] = ["mismatch"]
 
 
-class LLMSettings(_Strict):
-    """D7/D10: Gemini free tier. Free quotas change, so the limits live here, not in code."""
+Thinking = Literal["minimal", "low", "medium", "high"]
 
-    model: str = "gemini-flash-latest"
-    min_interval_seconds: float = Field(default=4.5, ge=0)  # stays under 15 requests/minute
-    daily_call_budget: int = Field(default=300, ge=0)  # runaway-loop breaker, far under RPD
+
+class FitModel(_Strict):
+    """Fit checks: many jobs, simple judgment. Flash-Lite free tier: 500/day, 15/minute."""
+
+    model: str = "gemini-3.5-flash-lite"
+    min_interval_seconds: float = Field(default=4.5, ge=0)
+    daily_call_budget: int = Field(default=450, ge=0)
+    thinking: Thinking | None = "minimal"
+
+
+class AnswersModel(_Strict):
+    """Form answers and cover letters: rare, quality matters. Flash free tier: 20/day, 5/min."""
+
+    model: str = "gemini-3.8-flash"
+    min_interval_seconds: float = Field(default=12.5, ge=0)
+    daily_call_budget: int = Field(default=18, ge=0)
+    thinking: Thinking | None = "low"
+
+
+class LLMSettings(_Strict):
+    """D7/D10: Gemini free tier. Quotas are per model and change, so they live here, not in
+    code. Check your project's real limits at https://ai.dev/rate-limit."""
+
+    fit: FitModel = FitModel()
+    answers: AnswersModel = AnswersModel()
+    fit_batch_size: int = Field(default=8, ge=1, le=20)  # jobs judged per fit call
 
 
 class Profile(_Strict):

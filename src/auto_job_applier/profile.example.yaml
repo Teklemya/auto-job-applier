@@ -71,11 +71,11 @@ settings:
 # without an LLM call. Leave empty to send every job to the LLM.
 skills: [Python, Java, JavaScript, TypeScript, React, SQL, AWS, Docker]
 
-# Gemini free tier (needs GEMINI_API_KEY from aistudio.google.com). Check your project's real
-# limits in AI Studio; these stay well under them.
-llm:
-  model: gemini-flash-latest
-  min_interval_seconds: 4.5
-  daily_call_budget: 300
+# Gemini free tier (needs GEMINI_API_KEY from aistudio.google.com). Quotas are per model;
+# check yours at https://ai.dev/rate-limit. Omit this section to keep the defaults:
+# llm:
+#   fit:     {model: gemini-3.5-flash-lite, min_interval_seconds: 4.5, daily_call_budget: 450}
+#   answers: {model: gemini-3.8-flash, min_interval_seconds: 12.5, daily_call_budget: 18}
+#   fit_batch_size: 8
 
 resume_path: resume.pdf  # relative paths live next to this file

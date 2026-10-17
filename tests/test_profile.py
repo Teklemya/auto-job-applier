@@ -88,8 +88,12 @@ def test_relative_resume_path_resolves_under_aja_home(
 def test_fit_and_llm_defaults(example_profile_data, write_profile):
     profile = load_profile(write_profile(example_profile_data))
     assert profile.settings.fit_skip == ["mismatch"]
-    assert profile.llm.daily_call_budget == 300
-    assert profile.llm.min_interval_seconds == 4.5
+    assert profile.llm.fit.model == "gemini-3.5-flash-lite"
+    assert profile.llm.fit.daily_call_budget == 450
+    assert profile.llm.answers.model == "gemini-3.8-flash"
+    assert profile.llm.answers.daily_call_budget == 18
+    assert profile.llm.answers.min_interval_seconds == 12.5  # 5 requests/minute
+    assert profile.llm.fit_batch_size == 8
     assert isinstance(profile.skills, list)
 
 
