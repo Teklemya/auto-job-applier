@@ -83,3 +83,21 @@ def test_relative_resume_path_resolves_under_aja_home(
     example_profile_data["resume_path"] = "resume.pdf"
     profile = load_profile(write_profile(example_profile_data))
     assert profile.resume_path == aja_home / "resume.pdf"
+
+
+def test_fit_and_llm_defaults(example_profile_data, write_profile):
+    profile = load_profile(write_profile(example_profile_data))
+    assert profile.settings.fit_skip == ["mismatch"]
+    assert profile.llm.fit.model == "gemini-3.5-flash-lite"
+    assert profile.llm.fit.daily_call_budget == 450
+    assert profile.llm.answers.model == "gemini-3.8-flash"
+    assert profile.llm.answers.daily_call_budget == 18
+    assert profile.llm.answers.min_interval_seconds == 12.5  # 5 requests/minute
+    assert profile.llm.fit_batch_size == 8
+
+
+def test_unknown_fit_verdict_is_a_clear_error(example_profile_data, write_profile):
+    example_profile_data["settings"]["fit_skip"] = ["mismach"]
+    with pytest.raises(ProfileError) as exc:
+        load_profile(write_profile(example_profile_data))
+    assert "settings.fit_skip" in str(exc.value)

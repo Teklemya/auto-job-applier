@@ -7,7 +7,11 @@ from typing import Annotated
 import typer
 
 from . import paths
-from .models import ATS, Status
+from .answers.writer import make_writer
+from .fit import screen_fit
+from .jd_fetch import FetchError, PostingClosed, Unsupported, fetch_description
+from .llm import LLMError, make_llm
+from .models import ATS, FormField, Status
 from .profile import ProfileError, load_profile, load_targeting
 from .screen import screen_new
 from .sources import simplify
@@ -95,6 +99,61 @@ def collect(
     if counts:
         summary = ", ".join(f"{n} {s}" for s, n in sorted(counts.items()))
         typer.echo(f"Screened {sum(counts.values())}: {summary}")
+
+
+@app.command()
+def fit(
+    limit: Annotated[int | None, typer.Option(help="Check at most this many new jobs.")] = None,
+) -> None:
+    """Fetch job descriptions and run the LLM fit check on queued jobs (free Gemini tier)."""
+    store = _store()
+    try:
+        profile = load_profile(paths.profile_path())
+        run = screen_fit(store, profile, make_llm(profile, store, "fit"), fetch_description, limit)
+    except (ProfileError, LLMError) as e:
+        typer.echo(str(e), err=True)
+        raise typer.Exit(1) from e
+    finally:
+        store.close()
+    for job, f in run.results:
+        verdict = f"{f.verdict:>8} {f.score:>3}" if f.verdict else f"{'-':>8} {'-':>3}"
+        typer.echo(f"{job.id:>5} {verdict}  {job.company[:20]:<20} {job.role[:40]:<40}  {f.reason}")
+    summary = ", ".join(f"{n} {k}" for k, n in sorted(run.counts.items()) if k != "checked")
+    typer.echo(f"Fit checked {run.counts['checked']}" + (f" ({summary})" if summary else ""))
+    if run.stopped:
+        typer.echo(f"Stopped early: {run.stopped}. Remaining jobs wait for the next run.")
+
+
+@app.command()
+def write(
+    job_id: int,
+    why: Annotated[bool, typer.Option("--why", help="Write a 'why us' answer instead.")] = False,
+) -> None:
+    """Print a cover letter (or 'why us' answer) for a job, to review the writing tone."""
+    store = _store()
+    try:
+        job = store.get(job_id)
+        if job is None:
+            typer.echo(f"No job #{job_id}", err=True)
+            raise typer.Exit(1)
+        profile = load_profile(paths.profile_path())
+        jd = store.get_description(job_id)
+        if jd is None:
+            jd = fetch_description(job)
+            store.save_description(job_id, jd)
+        label = f"Why do you want to work at {job.company}?" if why else "Cover Letter"
+        field = FormField(label, "textarea", required=True)
+        answer = make_writer(profile, make_llm(profile, store, "answers"))(field, job, jd)
+    except (ProfileError, LLMError, FetchError, PostingClosed, Unsupported) as e:
+        typer.echo(str(e), err=True)
+        raise typer.Exit(1) from e
+    finally:
+        store.close()
+    typer.echo(f"#{job.id} {job.company}: {job.role}\n")
+    if answer.confident:
+        typer.echo(answer.value)
+    else:
+        typer.echo(f"Not confident, would stage a draft: {answer.reason}")
 
 
 @app.command("list")

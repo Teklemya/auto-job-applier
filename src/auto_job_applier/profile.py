@@ -5,6 +5,7 @@ falling back to a default (a misspelled sponsorship key must never become a wron
 """
 
 from pathlib import Path
+from typing import Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
@@ -130,10 +131,45 @@ class Targeting(_Strict):
     ]  # fmt: skip
 
 
+FitVerdict = Literal["strong", "ok", "stretch", "mismatch"]
+
+
 class Settings(_Strict):
     # S1: shadow mode. Only the owner flips this by editing profile.yaml.
     submit: bool = False
     daily_submit_cap: int = Field(default=3, ge=0)
+    # D9: fit verdicts that skip a job. Add "stretch" to apply less widely.
+    fit_skip: list[FitVerdict] = ["mismatch"]
+
+
+Thinking = Literal["minimal", "low", "medium", "high"]
+
+
+class FitModel(_Strict):
+    """Fit checks: many jobs, simple judgment. Flash-Lite free tier: 500/day, 15/minute."""
+
+    model: str = "gemini-3.5-flash-lite"
+    min_interval_seconds: float = Field(default=4.5, ge=0)
+    daily_call_budget: int = Field(default=450, ge=0)
+    thinking: Thinking | None = "minimal"
+
+
+class AnswersModel(_Strict):
+    """Form answers and cover letters: rare, quality matters. Flash free tier: 20/day, 5/min."""
+
+    model: str = "gemini-3.8-flash"
+    min_interval_seconds: float = Field(default=12.5, ge=0)
+    daily_call_budget: int = Field(default=18, ge=0)
+    thinking: Thinking | None = "low"
+
+
+class LLMSettings(_Strict):
+    """D7/D10: Gemini free tier. Quotas are per model and change, so they live here, not in
+    code. Check your project's real limits at https://ai.dev/rate-limit."""
+
+    fit: FitModel = FitModel()
+    answers: AnswersModel = AnswersModel()
+    fit_batch_size: int = Field(default=8, ge=1, le=20)  # jobs judged per fit call
 
 
 class Profile(_Strict):
@@ -147,6 +183,7 @@ class Profile(_Strict):
     preferences: Preferences = Preferences()
     targeting: Targeting = Targeting()
     settings: Settings = Settings()
+    llm: LLMSettings = LLMSettings()
     resume_path: Path
 
     @field_validator("resume_path")

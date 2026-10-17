@@ -28,7 +28,7 @@ python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"   # setup
   does that, by hand.
 - Work-authorization and sponsorship answers come only from the profile, never from the LLM.
 - Never guess a required form field. If it can't be answered confidently, stage a draft instead.
-- Tests never hit live sites or the real Anthropic API. Use fixtures and stubs.
+- Tests never hit live sites or the real LLM API (Gemini). Use fixtures and stubs.
 - Never commit personal data (profile, resume, DB).
 ## Git Commit Guidelines
 - Never append "Co-Authored-By" lines or any AI signatures to commits or pull request descriptions.

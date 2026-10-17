@@ -1,0 +1,67 @@
+{
+ "absolute_url": "https://job-boards.greenhouse.io/affirm/jobs/8017340003",
+ "data_compliance": [
+  {
+   "type": "gdpr",
+   "requires_consent": false,
+   "requires_processing_consent": false,
+   "requires_retention_consent": false,
+   "retention_period": null,
+   "demographic_data_consent_applies": false
+  }
+ ],
+ "internal_job_id": 5895204003,
+ "location": {
+  "name": "Remote US"
+ },
+ "metadata": [
+  {
+   "id": 4128552003,
+   "name": "External Department",
+   "value": "Engineering",
+   "value_type": "single_select"
+  },
+  {
+   "id": 28890347003,
+   "name": "PERM Job?",
+   "value": false,
+   "value_type": "yes_no"
+  }
+ ],
+ "id": 8017340003,
+ "updated_at": "2026-10-16T17:13:47-04:00",
+ "requisition_id": "JR104485",
+ "title": "Software Engineer I, Fullstack (Search)",
+ "company_name": "Affirm",
+ "first_published": "2026-10-15T17:31:09-04:00",
+ "language": "en",
+ "application_deadline": null,
+ "content": "&lt;div class=&quot;content-intro&quot;&gt;&lt;p&gt;At Affirm, we exist for the moments that matter—giving people a clear, predictable way to pay over time, with no hidden fees, no surprises, and no tradeoffs on what matters most.&lt;/p&gt;&lt;/div&gt;&lt;p&gt;Search has become the default way consumers discover where to shop, compare options, and decide what to buy across platforms like Google, TikTok, and even Klarna. As we build a new Ads business and evolve Marketplace into a best in class shopping experience, improving search is one of our highest leverage investments to create an experience users choose and merchants want to invest in.&lt;br&gt;&lt;br&gt;&lt;strong&gt;What You&#39;ll Do&lt;/strong&gt;&lt;/p&gt;\n&lt;ul&gt;\n&lt;li&gt;With the support of your team, you will work on tasks that contribute to the team&#39;s projects and goals.&lt;/li&gt;\n&lt;li&gt;You will work collaboratively and proactively with your team and stakeholders, bringing them along for your work and helping to create visibility and dialog regarding the risks and trade-offs related to your work.&lt;/li&gt;\n&lt;li&gt;You will strike the right balance of speed and quality in your work, ensuring that we hit our business goals while protecting our systems from downtime.&lt;/li&gt;\n&lt;li&gt;You will contribute to a sense of community on your team by engaging in growth and development activities.&lt;/li&gt;\n&lt;/ul&gt;\n&lt;p&gt;&lt;br&gt;&lt;strong&gt;What We Look For&lt;br&gt;&lt;/strong&gt;&lt;/p&gt;\n&lt;ul&gt;\n&lt;li&gt;You have previous work or internship experience working with Javascript/Typescript.&lt;/li&gt;\n&lt;li&gt;You have previous work or internship experience designing, developing and launching backend systems at scale and are experienced using Python or Kotlin.&lt;/li&gt;\n&lt;li&gt;You have mastered taking a simple problem or business scenario into a solution that interacts with multiple software components, and executing on it by writing clear, easily understood, well tested and extensible code.&lt;/li&gt;\n&lt;li&gt;You are comfortable navigating a large code base, debugging others&#39; code, and providing feedback to other engineers through code reviews.&lt;/li&gt;\n&lt;li&gt;Your experience demonstrates that you take ownership of your growth, proactively seeking feedback from your team, your manager, and your stakeholders.&lt;/li&gt;\n&lt;li&gt;You have strong verbal and written communication skills that support effective collaboration with our global engineering team.&lt;/li&gt;\n&lt;li&gt;This position requires either equivalent practical experience or a Bachelor’s degree in a related field.&lt;/li&gt;\n&lt;/ul&gt;\n&lt;div&gt;\n&lt;div&gt;\n&lt;div&gt;\n&lt;p&gt;&amp;nbsp;&lt;/p&gt;\n&lt;p&gt;&lt;strong&gt;Base Pay Grade&lt;/strong&gt; - J&lt;br&gt;&lt;strong&gt;Equity Grade&lt;/strong&gt; - 5&lt;br&gt;&lt;br&gt;Employees new to Affirm typically come in at the start of the pay range. Affirm focuses on providing a simple and transparent pay structure which is based on a variety of factors, including location, experience and job-related skills.&lt;br&gt;Base pay is part of a total compensation package that may include equity rewards, monthly stipends for health, wellness and tech spending, and benefits (including 100% subsidized medical coverage, dental and vision for you and your dependents.)&lt;br&gt;&lt;br&gt;&lt;strong&gt;USA base pay range (CA, WA, NY, NJ, CT) per year:&lt;/strong&gt; $130,000 - $180,000&lt;br&gt;&lt;strong&gt;USA base pay range (all other U.S. states) per year:&lt;/strong&gt; $115,000 - $165,000&lt;br&gt;&lt;br&gt;#LI-Remote&lt;/p&gt;\n&lt;/div&gt;\n&lt;/div&gt;\n&lt;/div&gt;&lt;div class=&quot;content-conclusion&quot;&gt;&lt;div&gt;\n&lt;p&gt;&lt;strong&gt;Remote-first with flexibility built in&lt;/strong&gt;&lt;strong&gt;&lt;br&gt;&lt;/strong&gt;Affirm is proud to be a remote-first company. Most roles can be done from almost anywhere within the country of employment. Some positions may occasionally require in-person work at an Affirm office, and a few are office-based due to the nature of the work. All new hires will be invited to attend an in-person onboarding experience.&lt;/p&gt;\n&lt;p&gt;&lt;strong&gt;Benefits designed for you&lt;/strong&gt;&lt;strong&gt;&lt;br&gt;&lt;/strong&gt;Our benefits reflect our commitment to care, transparency, and flexibility. Here are a few highlights:&lt;/p&gt;\n&lt;ul&gt;\n&lt;li&gt;Health coverage at no cost: We cover 100% of premiums for employees and their dependents.&lt;/li&gt;\n&lt;li&gt;Spending stipends: Monthly stipends support your tech setup, and the ability to choose health and wellness options that are right for you.&lt;/li&gt;\n&lt;li&gt;Time off to recharge: Flexible time off and generous holiday calendars help you rest when you need to.&lt;/li&gt;\n&lt;li&gt;Own a piece of what you build: Our employee stock purchase plan (ESPP) lets you buy Affirm stock at a discount.&lt;/li&gt;\n&lt;/ul&gt;\n&lt;p&gt;We’re committed to providing an inclusive interview process, including accommodations for candidates with disabilities. If you need support, we’re happy to help.&lt;/p&gt;\n&lt;p&gt;For positions based in San Francisco or Los Angeles: Affirm considers qualified applicants with arrest and conviction records, as required by law.&lt;/p&gt;\n&lt;/div&gt;\n&lt;div&gt;\n&lt;p&gt;By clicking &quot;Submit Application,&quot; you acknowledge that you have read Affirm&#39;s&amp;nbsp;&lt;a href=&quot;https://www.affirm.com/global-candidate-privacy-notice&quot; target=&quot;_blank&quot;&gt;Global Candidate Privacy Notice&lt;/a&gt; and consent to the use of your personal information as described.&lt;/p&gt;\n&lt;/div&gt;&lt;/div&gt;",
+ "departments": [
+  {
+   "id": 4035726003,
+   "name": "Consumer Engineering",
+   "child_ids": [],
+   "parent_id": 4005044003
+  }
+ ],
+ "offices": [
+  {
+   "id": 4022513003,
+   "name": "Remote Canada",
+   "location": null,
+   "child_ids": [],
+   "parent_id": 4025301003
+  },
+  {
+   "id": 4013021003,
+   "name": "Remote US",
+   "location": null,
+   "child_ids": [],
+   "parent_id": 4025301003
+  }
+ ],
+ "ai_disclaimer": null,
+ "include_ai_disclaimer": false,
+ "ai_opt_out_request_url": null
+}

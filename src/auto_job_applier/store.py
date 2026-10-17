@@ -10,7 +10,7 @@ from collections.abc import Iterable
 from datetime import UTC, datetime
 from pathlib import Path
 
-from .models import ATS, Job, Status, Tier
+from .models import ATS, Fit, Job, Status, Tier
 
 _STATUSES = ", ".join(f"'{s}'" for s in Status)
 # Not yet in flight: safe to re-screen when the posting's facts change.
@@ -43,6 +43,39 @@ CREATE TABLE IF NOT EXISTS events (
     to_status   TEXT NOT NULL,
     message     TEXT,
     at          TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS descriptions (
+    job_id      INTEGER PRIMARY KEY REFERENCES jobs (id) ON DELETE CASCADE,
+    text        TEXT NOT NULL,
+    fetched_at  TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS fit_checks (
+    job_id      INTEGER PRIMARY KEY REFERENCES jobs (id) ON DELETE CASCADE,
+    verdict     TEXT,
+    score       INTEGER,
+    keywords    TEXT NOT NULL DEFAULT '[]',
+    reason      TEXT NOT NULL,
+    source      TEXT NOT NULL CHECK (source IN ('llm', 'keyword', 'none')),
+    checked_at  TEXT NOT NULL
+);
+
+-- Answers the owner gave at review (D3), reused for the same question later (R10).
+CREATE TABLE IF NOT EXISTS answer_bank (
+    question_key  TEXT PRIMARY KEY,
+    question      TEXT NOT NULL,
+    value         TEXT NOT NULL,
+    updated_at    TEXT NOT NULL
+);
+
+-- LLM calls per local day and model: daily budgets (D10) hold across runs.
+CREATE TABLE IF NOT EXISTS llm_calls (
+    day           TEXT NOT NULL,
+    model         TEXT NOT NULL,
+    calls         INTEGER NOT NULL DEFAULT 0,
+    rate_limited  INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (day, model)
 );
 """
 
@@ -210,6 +243,73 @@ class JobStore:
         return self._conn.execute(
             "SELECT * FROM events WHERE job_id = ? ORDER BY id", (job_id,)
         ).fetchall()
+
+    def save_description(self, job_id: int, text: str) -> None:
+        with self._conn:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO descriptions (job_id, text, fetched_at) VALUES (?, ?, ?)",
+                (job_id, text, _now()),
+            )
+
+    def get_description(self, job_id: int) -> str | None:
+        row = self._conn.execute(
+            "SELECT text FROM descriptions WHERE job_id = ?", (job_id,)
+        ).fetchone()
+        return row["text"] if row else None
+
+    def save_fit(self, job_id: int, fit: Fit) -> None:
+        with self._conn:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO fit_checks"
+                " (job_id, verdict, score, keywords, reason, source, checked_at)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    job_id,
+                    fit.verdict,
+                    fit.score,
+                    json.dumps(fit.matched_keywords),
+                    fit.reason,
+                    fit.source,
+                    _now(),
+                ),
+            )
+
+    def get_fit(self, job_id: int) -> Fit | None:
+        row = self._conn.execute("SELECT * FROM fit_checks WHERE job_id = ?", (job_id,)).fetchone()
+        if row is None:
+            return None
+        return Fit(
+            row["verdict"], row["score"], json.loads(row["keywords"]), row["reason"], row["source"]
+        )
+
+    def bank_entries(self) -> list[tuple[str, str]]:
+        """[(question_key, value)]"""
+        rows = self._conn.execute("SELECT question_key, value FROM answer_bank")
+        return [(r["question_key"], r["value"]) for r in rows]
+
+    def save_bank_entry(self, key: str, question: str, value: str) -> None:
+        with self._conn:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO answer_bank (question_key, question, value, updated_at)"
+                " VALUES (?, ?, ?, ?)",
+                (key, question, value, _now()),
+            )
+
+    def count_llm_call(self, day: str, model: str, rate_limited: bool = False) -> None:
+        with self._conn:
+            self._conn.execute(
+                "INSERT INTO llm_calls (day, model, calls, rate_limited) VALUES (?, ?, 1, ?)"
+                " ON CONFLICT (day, model) DO UPDATE SET calls = calls + 1,"
+                " rate_limited = rate_limited + excluded.rate_limited",
+                (day, model, int(rate_limited)),
+            )
+
+    def llm_usage(self, day: str, model: str) -> tuple[int, int]:
+        """(calls, rate-limited calls) made to `model` on `day`."""
+        row = self._conn.execute(
+            "SELECT calls, rate_limited FROM llm_calls WHERE day = ? AND model = ?", (day, model)
+        ).fetchone()
+        return (row["calls"], row["rate_limited"]) if row else (0, 0)
 
     def counts(self) -> dict[tuple[str, str], int]:
         """{(ats, status): count}"""

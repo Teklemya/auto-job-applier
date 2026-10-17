@@ -33,8 +33,9 @@ almost no screen time spent applying. The goal is interview flow, for practice a
   including non-US, is skipped.
 - **R7** Never apply to the same company + role twice, including across sources. A fillable
   posting takes the role over from an unsupported-site (MANUAL) copy.
-- **R8** LLM fit check (resume keywords vs. job description) with a score and a reason. Below
-  the threshold → skip.
+- **R8** LLM fit check (resume keywords vs. job description) with a verdict
+  (strong/ok/stretch/mismatch), a score and a reason. Only verdicts in `fit_skip` (default
+  `mismatch`) → skip; the score only orders the queue (D9).
 - **R9** Skipped and MANUAL jobs are recorded with a reason, never silently dropped. Jobs not yet
   in flight are re-screened when their flags or location change, and postings that vanish from
   the source (closed) are retired as SKIPPED. An empty parse is an error, never "all closed".
@@ -49,7 +50,7 @@ almost no screen time spent applying. The goal is interview flow, for practice a
   below $120k.
 - **R13** Cover letters and open-ended answers are written by the LLM from the resume and the job
   description, tailored and human-sounding. The LLM flags `confident:false` when it would need
-  facts that aren't in the resume.
+  facts that aren't in the resume. Cover letters are written only when the field is required.
 
 ### Submit gate (D1)
 - **R14** Submit only if **every required field** has a confident answer per R10–R13, the page
@@ -81,8 +82,10 @@ almost no screen time spent applying. The goal is interview flow, for practice a
 ## Technical decisions
 - Python ≥3.12, Typer CLI (`aja`), Playwright (sync, persistent context, headed real Chrome),
   Pydantic + YAML profile, SQLite (stdlib).
-- LLM: Claude Sonnet 5.5 (`claude-sonnet-5-5`) via the Anthropic SDK, with structured outputs
-  and the resume/profile in a cached system prompt. Salary uses the `web_search` server tool.
+- LLM: **$0.** Gemini Flash on Google's free tier via the `google-genai` SDK, behind a provider
+  interface, with JSON-schema structured outputs. A rate limiter and a daily call budget keep
+  usage under the free quota; when it runs out, jobs wait or become drafts, never guesses.
+  Salary uses Gemini with Google Search grounding.
 - Engines handle navigation only. They extract `FormField`s, and a shared resolver answers them.
 - Module layout, statuses and task breakdown are in `tasks/plan.md`.
 

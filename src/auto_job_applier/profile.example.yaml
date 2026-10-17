@@ -64,5 +64,14 @@ settings:
   # Shadow mode: false = draft everything, submit nothing. Only you change this.
   submit: false
   daily_submit_cap: 3
+  # Fit verdicts that skip a job: strong | ok | stretch | mismatch. Add stretch to be pickier.
+  fit_skip: [mismatch]
 
-resume_path: ~/.auto-job-applier/resume.pdf
+# Gemini free tier (needs GEMINI_API_KEY from aistudio.google.com). Quotas are per model;
+# check yours at https://ai.dev/rate-limit. Omit this section to keep the defaults:
+# llm:
+#   fit:     {model: gemini-3.5-flash-lite, min_interval_seconds: 4.5, daily_call_budget: 450}
+#   answers: {model: gemini-3.8-flash, min_interval_seconds: 12.5, daily_call_budget: 18}
+#   fit_batch_size: 8
+
+resume_path: resume.pdf  # relative paths live next to this file
