@@ -156,3 +156,45 @@ def test_collect_jobright_fails_loudly_when_nothing_parses(aja_home, monkeypatch
     result = runner.invoke(app, ["collect", "--source", "jobright"])
     assert result.exit_code == 1
     assert "format may have changed" in result.output
+
+
+# --- the Liked page ---------------------------------------------------------------------------
+
+
+def liked():
+    """A real Liked-page response: same job items, wrapped in result.list instead of jobList."""
+    return json.loads((FIXTURES / "jobright_liked.json").read_text())
+
+
+def test_liked_page_jobs_are_read():
+    jobs = jobright.parse_jobs(liked())
+    assert {j.company for j in jobs} == {"Intuit", "Lyft", "Visa"}
+
+
+def test_liked_page_jobs_are_read_whatever_their_match():
+    payload = liked()
+    for item in payload["result"]["list"]:
+        item["displayScore"] = 10.0
+    assert len(jobright.parse_jobs(payload)) == 3
+
+
+def test_liked_page_counts_as_a_job_list():
+    assert jobright.has_job_list([liked()])
+
+
+def test_other_lists_that_hold_no_jobs_are_ignored():
+    notifications = {"success": True, "result": {"list": [{"msgId": 1, "text": "hi"}]}}
+    assert not jobright.has_job_list([notifications])
+    assert jobright.parse_jobs(notifications) == []
+
+
+def test_a_job_both_liked_and_recommended_is_read_once():
+    jobs = jobright.parse_responses([feed(), liked()])
+    assert len(jobs) == 20  # all three liked jobs are also in the feed sample
+
+
+def test_more_pages_follow_while_the_liked_list_says_has_more():
+    payload = liked()
+    assert not jobright.has_more(payload)
+    payload["result"]["hasMore"] = True
+    assert jobright.has_more(payload)

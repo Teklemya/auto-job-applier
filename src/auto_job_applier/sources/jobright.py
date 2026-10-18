@@ -13,6 +13,7 @@ MIN_MATCH = 80.0  # "a match above 80%"
 FEED_URL = "https://jobright.ai/jobs/recommend"
 LIKED_URL = "https://jobright.ai/jobs/liked"
 MAX_FEED_PAGES = 5  # 20 jobs per page; stop earlier once a page has nothing above MIN_MATCH
+MAX_LIKED_PAGES = 10
 
 
 class JobrightError(Exception):
@@ -20,9 +21,21 @@ class JobrightError(Exception):
 
 
 def _job_list(payload: dict) -> list[dict] | None:
+    """The feed wraps jobs in result.jobList, the Liked page in result.list."""
     result = payload.get("result") if isinstance(payload, dict) else None
-    jobs = result.get("jobList") if isinstance(result, dict) else None
-    return jobs if isinstance(jobs, list) else None
+    if not isinstance(result, dict):
+        return None
+    jobs = result.get("jobList", result.get("list"))
+    if not isinstance(jobs, list):
+        return None
+    if not all(isinstance(item, dict) and "jobResult" in item for item in jobs):
+        return None
+    return jobs
+
+
+def has_more(payload: dict) -> bool:
+    result = payload.get("result")
+    return isinstance(result, dict) and bool(result.get("hasMore"))
 
 
 def _location(job: dict) -> str:
@@ -82,6 +95,14 @@ def _wait_for(page, done, seconds: float) -> bool:
     return done()
 
 
+def _scroll_for_more(page, payloads: list[dict]) -> bool:
+    """Scroll the list; True once the page has loaded another job list."""
+    loaded = len(payloads)
+    page.mouse.move(500, 500)
+    page.mouse.wheel(0, 20000)
+    return _wait_for(page, lambda: len(payloads) > loaded, 10)
+
+
 def fetch_responses() -> list[dict]:
     """Visit the recommended and Liked pages; return the job lists they loaded."""
     from playwright.sync_api import sync_playwright
@@ -114,15 +135,14 @@ def fetch_responses() -> list[dict]:
                     "If you were signed out, run `aja login`."
                 )
             for _ in range(MAX_FEED_PAGES - 1):
-                if not parse_jobs(payloads[-1]):
+                if not parse_jobs(payloads[-1]) or not _scroll_for_more(page, payloads):
                     break
-                loaded = len(payloads)
-                page.mouse.move(500, 500)
-                page.mouse.wheel(0, 20000)
-                if not _wait_for(page, lambda n=loaded: len(payloads) > n, 10):
-                    break
+            feed_pages = len(payloads)
             page.goto(LIKED_URL, wait_until="domcontentloaded")
-            page.wait_for_timeout(5000)
+            if _wait_for(page, lambda: len(payloads) > feed_pages, 15):
+                for _ in range(MAX_LIKED_PAGES - 1):
+                    if not has_more(payloads[-1]) or not _scroll_for_more(page, payloads):
+                        break
         finally:
             context.close()
     return payloads

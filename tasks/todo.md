@@ -29,7 +29,7 @@ Every task: `ruff check . && pytest` passes, plus its manual check.
 - [x] `aja login` → sign into Jobright and Google once (2026-10-17)
 
 ## Phase 3: Real sites (supervised, shadow mode forced on)
-- [x] T11 Jobright collector (moved up): browser profile + `aja login`, Liked + >80% match → final ATS URL → filters. `aja collect --source jobright`; live read 2026-10-17: 92 roles (26 Greenhouse/Lever/Workday pending). Liked page not yet seen with a liked job
+- [x] T11 Jobright collector (moved up): browser profile + `aja login`, Liked + >80% match → final ATS URL → filters. `aja collect --source jobright`; live read 2026-10-17: 92 roles (26 Greenhouse/Lever/Workday pending). Liked page verified live with 3 liked jobs
 - [ ] T7 Greenhouse engine + `aja review` (re-fill under 10s, highlight blockers, save to answer bank)
 - [ ] T8 Lever engine
 - [ ] T9a Workday auth (D11): Google first, else Keychain password; `ats_accounts` table; verification wall → STAGED + notify, resend when stale
