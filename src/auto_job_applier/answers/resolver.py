@@ -213,13 +213,14 @@ def _from_known_sources(
     A dropdown whose options load only as you type (school, degree) can't be checked against
     the profile here, so an option the owner picked at review comes first.
     """
-    sources: list[tuple[str, Callable[[], Value | object]]] = [
-        ("profile", lambda: _profile_value(label, profile)),
-        ("preferences", lambda: _preference_value(label, f, profile)),
-        ("bank", lambda: bank.lookup(f.label)),
-    ]
-    if f.kind == "select" and not f.options:
-        sources.insert(0, sources.pop())
+    from_profile = ("profile", lambda: _profile_value(label, profile))
+    from_preferences = ("preferences", lambda: _preference_value(label, f, profile))
+    from_bank = ("bank", lambda: bank.lookup(f.label))
+    sources: list[tuple[str, Callable[[], Value | object]]] = (
+        [from_bank, from_profile, from_preferences]
+        if f.kind == "select" and not f.options
+        else [from_profile, from_preferences, from_bank]
+    )
     for source, get in sources:
         v = get()
         if v is None:

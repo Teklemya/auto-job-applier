@@ -226,10 +226,12 @@ _FILLABLE = (Status.PENDING, Status.STAGED)
 
 
 @contextmanager
-def _greenhouse_session(job: Job) -> Iterator[greenhouse.GreenhouseSession]:
+def _greenhouse_session(job: Job, questions: bool = True) -> Iterator[greenhouse.GreenhouseSession]:
+    """The job's form in the tool's browser. Reading fields needs the questions API; a re-fill
+    from a stored packet doesn't."""
     from playwright.sync_api import sync_playwright
 
-    api = greenhouse.fetch_questions(job)
+    api = greenhouse.fetch_questions(job) if questions else None
     with sync_playwright() as p:
         context = browser.open_context(p, paths.browser_profile_dir())
         try:
@@ -341,7 +343,7 @@ def review_job(
         typer.echo(f"#{job_id} {job.company}: {job.role} ({job.reason})")
         packet = _ask_blockers(packet, AnswerBank(store))
         store.save_packet(job_id, packet)
-        with _greenhouse_session(job) as session:
+        with _greenhouse_session(job, questions=False) as session:
             rejected = session.fill(fill_plan(packet.fields, packet.answers))
             still_open = [pf.dom_id for pf in review.blocking_fields(packet)]
             session.highlight(still_open + [i for i in rejected if i not in still_open])

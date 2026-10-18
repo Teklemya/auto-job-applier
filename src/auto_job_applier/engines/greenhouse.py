@@ -10,13 +10,13 @@ section in the label ("Employment: Title") so the resolver can tell them apart.
 import contextlib
 import html as html_lib
 import random
-import re
 from collections.abc import Callable
 from html.parser import HTMLParser
 from pathlib import Path
 
+from ..answers.bank import normalize
 from ..geo import US_STATES
-from ..jd_fetch import _get_json, api_url
+from ..jd_fetch import api_url, get_json
 from ..models import FormField, Job
 from .base import Action, PageField
 
@@ -154,30 +154,26 @@ def extract_fields(page_html: str, api: dict | None = None) -> list[PageField]:
     return fields
 
 
-def _words(text: str) -> str:
-    return " ".join(re.sub(r"[^a-z0-9]+", " ", text.lower()).split())
-
-
 def pick_option(value: str, options: list[str]) -> str | None:
     """The dropdown option meaning `value`, or None when no single option clearly fits.
 
     Places come back spelled out ("Kansas City, Missouri, United States"), so a value like
     "Kansas City, MO" matches on the city and then on the state, by name or abbreviation.
     """
-    wanted = _words(value)
-    exact = [o for o in options if _words(o) == wanted]
+    wanted = normalize(value)
+    exact = [o for o in options if normalize(o) == wanted]
     if exact:
         return exact[0]
-    head, *rest = [_words(part) for part in value.split(",")]
-    hits = [o for o in options if _words(o).startswith(head)]
+    head, *rest = [normalize(part) for part in value.split(",")]
+    hits = [o for o in options if normalize(o).startswith(head)]
     for part in rest:
-        names = {part, _words(US_STATES.get(part.upper(), part))}
-        narrowed = [o for o in hits if names & set(_words(p) for p in o.split(","))]
+        names = {part, normalize(US_STATES.get(part.upper(), part))}
+        narrowed = [o for o in hits if names & set(normalize(p) for p in o.split(","))]
         hits = narrowed or hits
     return hits[0] if len(hits) == 1 else None
 
 
-def fetch_questions(job: Job, get: Callable[[str], dict] = _get_json) -> dict:
+def fetch_questions(job: Job, get: Callable[[str], dict] = get_json) -> dict:
     return get(api_url(job) + "?questions=true")
 
 

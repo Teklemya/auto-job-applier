@@ -6,7 +6,7 @@ Answers given here go into the answer bank, so the same question is answered nex
 from dataclasses import replace
 
 from .answers.bank import AnswerBank
-from .answers.resolver import match_option
+from .answers.resolver import is_work_auth, match_option
 from .engines.base import Packet, PageField
 from .models import ResolvedAnswer
 
@@ -34,7 +34,8 @@ def apply_answers(packet: Packet, given: dict[str, str], bank: AnswerBank) -> Pa
         if value is None:
             raise ValueError(f"{pf.field.label}: choose one of {', '.join(pf.field.options)}")
         answers[i] = ResolvedAnswer(pf.field, value, "owner", True, "answered at review")
-        bank.save(pf.field.label, value)
+        if not is_work_auth(pf.field.label):  # the bank never answers these (R11)
+            bank.save(pf.field.label, value)
         answered.add(pf.field.label)
     blockers = [b for b in packet.blockers if b.removeprefix(_UNFILLED) not in answered]
     return replace(packet, answers=answers, blockers=blockers)

@@ -69,6 +69,19 @@ def test_owner_answers_go_into_the_answer_bank(store):
     assert bank.lookup("Education: Degree") == "Bachelor's Degree"
 
 
+def test_work_authorization_answers_stay_out_of_the_bank(store):
+    # The bank never answers work authorization (R11), so storing it would only add clutter.
+    auth = FormField(
+        "Work Authorization", "select", True, ["I am authorized", "I need sponsorship"]
+    )
+    packet = Packet(
+        [PageField("q", auth)], [ResolvedAnswer(auth, None, "none", False)], ["Work Authorization"]
+    )
+    bank = AnswerBank(store)
+    review.apply_answers(packet, {"q": "I am authorized"}, bank)
+    assert store.bank_entries() == []
+
+
 def test_skipped_questions_stay_blocking(store):
     packet = review.apply_answers(draft(), {}, AnswerBank(store))
     assert packet.blockers == draft().blockers
@@ -113,9 +126,11 @@ def staged_lyft(aja_home, monkeypatch):
     s.set_status(job_id, Status.STAGED, "needs review: 2 blocking")
     s.close()
     session = ReviewSession()
+    session.opened_with = []
 
     @contextmanager
-    def fake_session(job):
+    def fake_session(job, questions=True):
+        session.opened_with.append(questions)
         yield session
 
     monkeypatch.setattr(cli, "_greenhouse_session", fake_session)
@@ -194,7 +209,7 @@ def test_a_work_authorization_answer_points_to_the_profile_not_the_bank(aja_home
     s.close()
 
     @contextmanager
-    def fake_session(job):
+    def fake_session(job, questions=True):
         yield ReviewSession()
 
     monkeypatch.setattr(cli, "_greenhouse_session", fake_session)
@@ -208,9 +223,15 @@ def test_review_highlights_fields_the_refill_could_not_set(aja_home, staged_lyft
     session = ReviewSession(rejects={"first_name"})
 
     @contextmanager
-    def fake_session(job):
+    def fake_session(job, questions=True):
         yield session
 
     monkeypatch.setattr(cli, "_greenhouse_session", fake_session)
     runner.invoke(cli.app, ["review", str(job_id)], input="Bachelor's Degree\nNo\nn\n")
     assert session.highlighted == ["first_name"]
+
+
+def test_review_refills_from_the_draft_without_downloading_the_questions(aja_home, staged_lyft):
+    job_id, session = staged_lyft
+    runner.invoke(cli.app, ["review", str(job_id)], input="\n\nn\n")
+    assert session.opened_with == [False]
