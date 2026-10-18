@@ -29,6 +29,11 @@ _WORK_AUTH = re.compile(
     r"|citizen|immigration|right to work|\bu ?s person\b|\bitar\b|export control|h ?1 ?b"
     r"|\bopt\b(?! (in|out))|\bcpt\b|green card|permanent resid"
 )
+# Questions about a specific status. A generic "yes, I'm authorized" answer must never reach them.
+_STATUS_SPECIFIC = re.compile(r"citizen|u ?s person|itar|export|h ?1 ?b|green card|permanent")
+_OPEN_ENDED = re.compile(
+    r"\b(what|which|describe|explain|elaborate|details?|provide|tell us)\b|^if\b"
+)
 _LONG_FORM = re.compile(
     r"cover letter|\bwhy\b|what interests you|interested in (this|our|working)|motivat"
 )
@@ -135,6 +140,17 @@ def is_work_auth(question: str) -> bool:
     return bool(_WORK_AUTH.search(normalize(question)))
 
 
+def _explains(f: FormField, label: str, fact: Value, p: Profile) -> bool:
+    """Use the owner's explanation: open-ended free text that a yes/no fact answers poorly."""
+    return bool(
+        p.work_authorization.explanation
+        and not f.options
+        and not isinstance(fact, str)  # "What is your visa status?" keeps the visa status
+        and _OPEN_ENDED.search(label)
+        and not _STATUS_SPECIFIC.search(label)
+    )
+
+
 def _approved_work_auth(f: FormField, p: Profile) -> ResolvedAnswer | None:
     """The one option the owner approved word for word in the profile; None if none is offered."""
     approved = {normalize(a) for a in p.work_authorization.approved_answers}
@@ -153,9 +169,7 @@ def _work_auth_value(label: str, p: Profile) -> Value:
         return wa.authorized_to_work_us and not needs
     if "sponsor" in label:
         return needs
-    if re.search(r"authori[sz]|eligib|legally", label) and not re.search(
-        r"citizen|u ?s person|itar|export|h ?1 ?b|green card|permanent", label
-    ):
+    if re.search(r"authori[sz]|eligib|legally", label) and not _STATUS_SPECIFIC.search(label):
         return wa.authorized_to_work_us
     if re.search(r"visa status|immigration status|current visa", label):
         return wa.visa_status
@@ -284,7 +298,10 @@ def resolve(
             if (ans := _approved_work_auth(f, profile)) is not None:
                 results[i] = ans
                 continue
-            ans = _answer(f, _work_auth_value(label, profile), "profile")
+            value = _work_auth_value(label, profile)
+            if _explains(f, label, value, profile):
+                value = profile.work_authorization.explanation
+            ans = _answer(f, value, "profile")
             if ans.value is None:
                 ans = _unresolved(
                     f, "work authorization question not covered by the profile: answer at review"

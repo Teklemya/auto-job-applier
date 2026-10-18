@@ -52,6 +52,9 @@ class WorkAuthorization(_Strict):
     # Exact option sentences the owner approved for questions whose options aren't Yes/No,
     # e.g. "I am authorized to work for any employer in the country ...". Used verbatim.
     approved_answers: list[str] = []
+    # The owner's own words for open-ended text questions ("what sponsorship would you
+    # require?", "describe your work authorization"). Never used for dropdowns or citizenship.
+    explanation: str | None = None
 
 
 class Education(_Strict):

@@ -31,6 +31,9 @@ work_authorization:
   # `aja review` prints the line to add after you answer one.
   approved_answers: []
   #   - "I am authorized to work for any employer in the country in which this position is based."
+  # Your own words for open-ended text questions ("what sponsorship would you require?",
+  # "describe your work authorization"). Never typed into dropdowns or citizenship questions.
+  explanation: null
 
 education:
   - school: Example University

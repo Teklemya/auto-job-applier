@@ -518,3 +518,69 @@ def test_approved_sentences_never_answer_other_questions(example_profile_data, w
     model = FakeLLM(llm_says((0, "No", True)))
     [a] = run([F("Do you enjoy hiking?", "select", True, YES_NO)], profile, bank, model)
     assert a.source == "llm"
+
+
+# --- work authorization: the owner's own explanation for open-ended text questions ---
+
+EXPLANATION = "I am authorized to work in the US on F-1 OPT and in the green card process."
+
+
+def explaining(example_profile_data, write_profile):
+    example_profile_data["work_authorization"]["explanation"] = EXPLANATION
+    return load_profile(write_profile(example_profile_data))
+
+
+@pytest.mark.parametrize(
+    "label",
+    [
+        "If you're not authorized to work at the stated location, what sponsorship would you "
+        "require for the role?",
+        "Please describe your current work authorization status.",
+        "Explain your visa sponsorship needs, if any.",
+    ],
+)
+def test_open_ended_work_authorization_text_gets_the_owners_explanation(
+    example_profile_data, write_profile, bank, label
+):
+    profile = explaining(example_profile_data, write_profile)
+    [a] = run([F(label, "textarea", required=False)], profile, bank)
+    assert (a.value, a.source, a.confident) == (EXPLANATION, "profile", True)
+
+
+def test_yes_no_sponsorship_question_in_a_text_box_still_gets_no(
+    example_profile_data, write_profile, bank
+):
+    profile = explaining(example_profile_data, write_profile)
+    [a] = run([F("Do you require visa sponsorship?")], profile, bank)
+    assert a.value == "No"
+
+
+def test_visa_status_question_still_gets_the_visa_status(example_profile_data, write_profile, bank):
+    profile = explaining(example_profile_data, write_profile)
+    [a] = run([F("What is your current visa status?")], profile, bank)
+    assert a.value == "F-1 OPT"
+
+
+@pytest.mark.parametrize(
+    "label",
+    ["Are you a U.S. citizen?", "What is your citizenship?", "Describe your U.S. person status"],
+)
+def test_citizenship_questions_never_get_the_explanation(
+    example_profile_data, write_profile, bank, label
+):
+    profile = explaining(example_profile_data, write_profile)
+    [a] = run([F(label)], profile, bank)
+    assert a.value != EXPLANATION
+    assert not a.confident
+
+
+def test_dropdowns_never_get_the_explanation(example_profile_data, write_profile, bank):
+    profile = explaining(example_profile_data, write_profile)
+    [a] = run([F("Work Authorization", "select", True, LYFT_AUTH)], profile, bank)
+    assert a.value is None and not a.confident
+
+
+def test_without_an_explanation_open_ended_questions_keep_todays_answer(profile, bank):
+    label = "Please describe your current work authorization status."
+    [a] = run([F(label, "textarea")], profile, bank)
+    assert a.value == "Yes"
