@@ -454,3 +454,67 @@ def test_profile_still_beats_the_bank_when_the_options_are_known(profile, bank):
 def test_employment_current_role_is_ticked_for_the_profiles_current_job(profile, bank):
     [a] = run([F("Employment: Current role", kind="checkbox", required=False)], profile, bank)
     assert (a.value, a.source) == ("Yes", "profile")
+
+
+# --- work authorization: option sentences the owner approved in the profile (option A) ---
+
+SEATGEEK_AUTH = [
+    "Yes, I have US work authorization as a US Citizen or US Permanent Resident/Green Card Holder",
+    "Yes, I have US Work authorization via a non-immigrant visa (H-1B, L-1, F-1 OPT OR CPT, TN)",
+    "No, I am not currently authorized to work in the United States",
+]
+LYFT_AUTH = [
+    "I am authorized to work for any employer in the country in which this position is based.",
+    "I require/will require Lyft's sponsorship to obtain work authorization (e.g. H-1B, TN, etc.)",
+    "My status to work in the country in which this position is based is unknown.",
+]
+
+
+def approving(example_profile_data, write_profile, *sentences):
+    example_profile_data["work_authorization"]["approved_answers"] = list(sentences)
+    return load_profile(write_profile(example_profile_data))
+
+
+def test_an_approved_option_sentence_answers_a_work_authorization_question(
+    example_profile_data, write_profile, bank
+):
+    profile = approving(example_profile_data, write_profile, SEATGEEK_AUTH[1])
+    field = F(
+        "Are you currently authorized to work in the United States?", "select", True, SEATGEEK_AUTH
+    )
+    [a] = run([field], profile, bank)
+    assert (a.value, a.source, a.confident) == (SEATGEEK_AUTH[1], "profile", True)
+
+
+def test_approved_sentences_match_despite_case_and_punctuation(
+    example_profile_data, write_profile, bank
+):
+    approved = (
+        "i am authorized to work for any employer in the country in which this position is based"
+    )
+    profile = approving(example_profile_data, write_profile, approved)
+    [a] = run([F("Work Authorization", "select", True, LYFT_AUTH)], profile, bank)
+    assert a.value == LYFT_AUTH[0]
+
+
+def test_without_an_approved_sentence_the_long_options_still_block(profile, bank):
+    [a] = run([F("Work Authorization", "select", True, LYFT_AUTH)], profile, bank)
+    assert a.value is None and not a.confident
+
+
+def test_two_approved_sentences_on_one_question_block_rather_than_pick(
+    example_profile_data, write_profile, bank
+):
+    profile = approving(example_profile_data, write_profile, *SEATGEEK_AUTH[:2])
+    field = F(
+        "Are you currently authorized to work in the United States?", "select", True, SEATGEEK_AUTH
+    )
+    [a] = run([field], profile, bank)
+    assert a.value is None and not a.confident
+
+
+def test_approved_sentences_never_answer_other_questions(example_profile_data, write_profile, bank):
+    profile = approving(example_profile_data, write_profile, "Yes")
+    model = FakeLLM(llm_says((0, "No", True)))
+    [a] = run([F("Do you enjoy hiking?", "select", True, YES_NO)], profile, bank, model)
+    assert a.source == "llm"

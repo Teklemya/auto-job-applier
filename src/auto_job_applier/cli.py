@@ -11,6 +11,7 @@ import typer
 
 from . import browser, paths, review
 from .answers.bank import AnswerBank
+from .answers.resolver import is_work_auth
 from .answers.writer import make_writer
 from .apply import stage
 from .engines import greenhouse
@@ -300,6 +301,13 @@ def _ask_blockers(packet: Packet, bank: AnswerBank) -> Packet:
                 break
             try:
                 packet = review.apply_answers(packet, {pf.dom_id: value.strip()}, bank)
+                if is_work_auth(pf.field.label):
+                    chosen = packet.answers[packet.fields.index(pf)].value
+                    typer.echo(
+                        "  Work authorization is never reused from past answers. To answer it "
+                        "automatically next time, add this line under work_authorization: "
+                        f'approved_answers in profile.yaml:\n    - "{chosen}"'
+                    )
                 break
             except ValueError as e:
                 typer.echo(str(e))

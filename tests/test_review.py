@@ -170,3 +170,28 @@ def test_review_of_a_job_without_a_draft_fails(aja_home):
     result = runner.invoke(cli.app, ["review", "42"])
     assert result.exit_code == 1
     assert "No draft for #42" in result.output
+
+
+def test_a_work_authorization_answer_points_to_the_profile_not_the_bank(aja_home, monkeypatch):
+    auth = FormField(
+        "Work Authorization", "select", True, ["I am authorized", "I need sponsorship"]
+    )
+    packet = Packet(
+        [PageField("question_9", auth)],
+        [ResolvedAnswer(auth, None, "none", False)],
+        ["Work Authorization"],
+    )
+    s = JobStore(aja_home / "jobs.db")
+    s.upsert_many([LYFT])
+    job_id = s.list()[0].id
+    s.save_packet(job_id, packet)
+    s.close()
+
+    @contextmanager
+    def fake_session(job):
+        yield ReviewSession()
+
+    monkeypatch.setattr(cli, "_greenhouse_session", fake_session)
+    result = runner.invoke(cli.app, ["review", str(job_id)], input="I am authorized\nn\n")
+    assert "approved_answers" in result.output
+    assert '"I am authorized"' in result.output

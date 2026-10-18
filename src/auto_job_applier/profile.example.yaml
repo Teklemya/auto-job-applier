@@ -27,6 +27,10 @@ work_authorization:
   requires_sponsorship_now: false
   requires_sponsorship_future: false
   visa_status: F-1 OPT
+  # Option sentences you approve, word for word, for questions that aren't Yes/No.
+  # `aja review` prints the line to add after you answer one.
+  approved_answers: []
+  #   - "I am authorized to work for any employer in the country in which this position is based."
 
 education:
   - school: Example University

@@ -49,6 +49,9 @@ class WorkAuthorization(_Strict):
     requires_sponsorship_now: bool
     requires_sponsorship_future: bool
     visa_status: str | None = None  # e.g. "F-1 OPT"; only used if a form asks directly
+    # Exact option sentences the owner approved for questions whose options aren't Yes/No,
+    # e.g. "I am authorized to work for any employer in the country ...". Used verbatim.
+    approved_answers: list[str] = []
 
 
 class Education(_Strict):

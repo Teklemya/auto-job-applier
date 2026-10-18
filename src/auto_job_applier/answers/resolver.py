@@ -130,6 +130,22 @@ def _preference_value(label: str, field: FormField, p: Profile) -> Value | objec
     return None
 
 
+def is_work_auth(question: str) -> bool:
+    """Work authorization and sponsorship: answered from the profile only (R11)."""
+    return bool(_WORK_AUTH.search(normalize(question)))
+
+
+def _approved_work_auth(f: FormField, p: Profile) -> ResolvedAnswer | None:
+    """The one option the owner approved word for word in the profile; None if none is offered."""
+    approved = {normalize(a) for a in p.work_authorization.approved_answers}
+    hits = [o for o in f.options if normalize(o) in approved]
+    if not hits:
+        return None
+    if len(hits) > 1:
+        return _unresolved(f, "several approved work authorization answers fit: answer at review")
+    return _answer(f, hits[0], "profile", "approved in the profile")
+
+
 def _work_auth_value(label: str, p: Profile) -> Value:
     wa = p.work_authorization
     needs = wa.requires_sponsorship_now or wa.requires_sponsorship_future
@@ -264,6 +280,9 @@ def resolve(
     for i, f in enumerate(fields):
         label = normalize(f.label)
         if _WORK_AUTH.search(label):
+            if (ans := _approved_work_auth(f, profile)) is not None:
+                results[i] = ans
+                continue
             ans = _answer(f, _work_auth_value(label, profile), "profile")
             if ans.value is None:
                 ans = _unresolved(
