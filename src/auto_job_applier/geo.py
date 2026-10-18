@@ -26,6 +26,8 @@ US_COUNTRY = {"us", "usa", "u.s.", "u.s.a.", "united states", "united states of 
 
 _REMOTE = re.compile(r"\bremote\b", re.I)
 _REMOTE_FILLER = re.compile(r"\b(in|within|from|only|anywhere|based)\b", re.I)
+# LinkedIn-style names Jobright uses: "Greater Seattle Area", "Kansas City Metropolitan Area".
+_AREA = re.compile(r"^greater\s+|\s+(metropolitan|metro)?\s*area$", re.I)
 
 
 def _norm(text: str) -> str:
@@ -64,6 +66,7 @@ def place_matches(loc: str, entry: str) -> bool:
     'Lawrence, MA' doesn't match 'Lawrence, KS' and 'New Orleans, LA' never matches alias 'LA'.
     """
     city, *regions = [p.strip() for p in loc.split(",")]
+    city = _AREA.sub("", city)
     entry_city, *entry_regions = [p.strip() for p in entry.split(",")]
     if _norm(city) != _norm(entry_city):
         return False

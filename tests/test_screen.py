@@ -93,6 +93,8 @@ def test_early_career_titles_are_kept(role):
         ("Portland, OR", "Acme", [], Tier.HUB),
         ("Lawrence, KS", "Acme", [], Tier.KC_METRO),
         ("Olathe", "Garmin", [], Tier.KC_METRO),  # no state given: city name is enough
+        ("Greater Seattle Area", "Plaid", [], Tier.HUB),  # LinkedIn-style area (Jobright)
+        ("Kansas City Metropolitan Area", "Acme", [], Tier.KC_METRO),
     ],
 )
 def test_location_tiers(location, company, flags, tier):

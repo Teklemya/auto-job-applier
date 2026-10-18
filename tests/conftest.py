@@ -4,6 +4,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from auto_job_applier.sources import jobright
+
 FIXTURES = Path(__file__).parent / "fixtures"
 
 
@@ -13,6 +15,16 @@ def aja_home(tmp_path, monkeypatch):
     home = tmp_path / "aja-home"
     monkeypatch.setenv("AJA_HOME", str(home))
     return home
+
+
+@pytest.fixture(autouse=True)
+def no_live_jobright(monkeypatch):
+    """Tests never open the real browser; a test that needs Jobright stubs fetch_responses."""
+
+    def live_browser_blocked():
+        raise AssertionError("test tried to open Jobright in a real browser")
+
+    monkeypatch.setattr(jobright, "fetch_responses", live_browser_blocked)
 
 
 @pytest.fixture

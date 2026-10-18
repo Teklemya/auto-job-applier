@@ -1,20 +1,21 @@
 """`aja` command-line entry point."""
 
+from enum import StrEnum
 from importlib import resources
 from pathlib import Path
 from typing import Annotated
 
 import typer
 
-from . import paths
+from . import browser, paths
 from .answers.writer import make_writer
 from .fit import screen_fit
 from .jd_fetch import FetchError, PostingClosed, Unsupported, fetch_description
 from .llm import LLMError, make_llm
-from .models import ATS, FormField, Status
+from .models import ATS, FormField, Job, Status
 from .profile import ProfileError, load_profile, load_targeting
 from .screen import screen_new
-from .sources import simplify
+from .sources import jobright, simplify
 from .store import JobStore
 
 app = typer.Typer(no_args_is_help=True, help="Collect SWE roles and apply to them.")
@@ -38,6 +39,21 @@ def init() -> None:
         typer.echo(f"Wrote example profile: {profile}  (edit it, then run `aja check`)")
     _store().close()
     typer.echo(f"Database: {paths.db_path()}")
+
+
+@app.command()
+def login() -> None:
+    """Sign into Jobright and Google once in the tool's own Chrome profile."""
+    typer.echo(
+        "Opening Chrome on the tool profile. Sign into Jobright and Google, "
+        "then quit Chrome (Cmd+Q) to finish."
+    )
+    try:
+        browser.open_login(paths.browser_profile_dir())
+    except FileNotFoundError as e:
+        typer.echo(str(e), err=True)
+        raise typer.Exit(1) from e
+    typer.echo(f"Saved logins in {paths.browser_profile_dir()}")
 
 
 @app.command()
@@ -65,19 +81,15 @@ def stats() -> None:
         typer.echo(f"{ats:<11} {status:<8} {n:>5}")
 
 
-@app.command()
-def collect(
-    file: Annotated[
-        Path | None, typer.Option(help="Parse a local README instead of fetching it.")
-    ] = None,
-) -> None:
-    """Fetch the SimplifyJobs README and add its open SWE roles to the queue."""
+class Source(StrEnum):
+    ALL = "all"
+    SIMPLIFY = "simplify"
+    JOBRIGHT = "jobright"
+
+
+def _simplify_jobs(file: Path | None) -> list[Job]:
     try:
-        targeting = load_targeting(paths.profile_path())
         markdown = file.read_text() if file else simplify.fetch_readme()
-    except ProfileError as e:
-        typer.echo(str(e), err=True)
-        raise typer.Exit(1) from e
     except OSError as e:  # URLError, timeouts, unreadable --file
         typer.echo(f"Could not fetch SimplifyJobs README: {e}", err=True)
         raise typer.Exit(1) from e
@@ -88,14 +100,61 @@ def collect(
             "Parsed 0 roles from SimplifyJobs; the README format may have changed.", err=True
         )
         raise typer.Exit(1)
+    return jobs
+
+
+def _jobright_jobs() -> list[Job]:
+    try:
+        payloads = jobright.fetch_responses()
+    except jobright.JobrightError as e:
+        typer.echo(str(e), err=True)
+        raise typer.Exit(1) from e
+    if not jobright.has_job_list(payloads):
+        typer.echo("Jobright returned no job list; the page format may have changed.", err=True)
+        raise typer.Exit(1)
+    return jobright.parse_responses(payloads)
+
+
+@app.command()
+def collect(
+    file: Annotated[
+        Path | None,
+        typer.Option(help="Parse a local SimplifyJobs README instead of fetching it."),
+    ] = None,
+    source: Annotated[Source, typer.Option(case_sensitive=False)] = Source.ALL,
+) -> None:
+    """Add open SWE roles from SimplifyJobs and Jobright to the queue, then screen them."""
+    try:
+        targeting = load_targeting(paths.profile_path())
+    except ProfileError as e:
+        typer.echo(str(e), err=True)
+        raise typer.Exit(1) from e
+    use_simplify = file is not None or source in (Source.ALL, Source.SIMPLIFY)
+    use_jobright = file is None and source in (Source.ALL, Source.JOBRIGHT)
+    simplify_jobs = _simplify_jobs(file) if use_simplify else []
+    jobright_jobs = _jobright_jobs() if use_jobright else []
+
     store = _store()
-    inserted, updated = store.upsert_many(jobs)
-    retired = store.retire_missing("simplify", {j.url for j in jobs})
-    counts = screen_new(store, targeting)
-    store.close()
-    typer.echo(f"SimplifyJobs: {len(jobs)} open SWE roles ({inserted} new, {updated} updated)")
-    if retired:
-        typer.echo(f"Retired {retired} postings no longer listed")
+    try:
+        if use_simplify:
+            inserted, updated = store.upsert_many(simplify_jobs)
+            retired = store.retire_missing("simplify", {j.url for j in simplify_jobs})
+            typer.echo(
+                f"SimplifyJobs: {len(simplify_jobs)} open SWE roles "
+                f"({inserted} new, {updated} updated)"
+            )
+            if retired:
+                typer.echo(f"Retired {retired} postings no longer listed")
+        if use_jobright:
+            # Jobright's feed is a rolling recommendation list, so nothing is retired from it.
+            inserted, updated = store.upsert_many(jobright_jobs)
+            typer.echo(
+                f"Jobright: {len(jobright_jobs)} roles liked or above "
+                f"{jobright.MIN_MATCH:.0f}% match ({inserted} new, {updated} updated)"
+            )
+        counts = screen_new(store, targeting)
+    finally:
+        store.close()
     if counts:
         summary = ", ".join(f"{n} {s}" for s, n in sorted(counts.items()))
         typer.echo(f"Screened {sum(counts.values())}: {summary}")
