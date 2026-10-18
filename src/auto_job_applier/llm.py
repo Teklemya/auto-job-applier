@@ -33,7 +33,11 @@ class LLMError(Exception):
 
 
 class RateLimited(Exception):
-    """The provider answered 429, or 5xx (overloaded). Worth one retry after a backoff."""
+    """The provider answered 429, or 5xx (overloaded). Worth one retry, unless `daily`."""
+
+    def __init__(self, message: str, *, daily: bool = False):
+        super().__init__(message)
+        self.daily = daily
 
 
 class QuotaExhausted(Exception):
@@ -92,7 +96,7 @@ class GeminiProvider:
             )
         except errors.APIError as e:
             if e.code == 429 or e.code >= 500:
-                raise RateLimited(f"Gemini {e.code}: {e.message or e.status}") from e
+                raise self._rate_limited(e) from e
             raise LLMError(f"Gemini error {e.code}: {e}") from e
         if isinstance(resp.parsed, schema):
             return resp.parsed
@@ -100,6 +104,26 @@ class GeminiProvider:
             return schema.model_validate_json(resp.text or "")
         except ValidationError as e:
             raise LLMError(f"Gemini returned unusable output: {e}") from e
+
+    def _rate_limited(self, e) -> RateLimited:
+        """Say which quota Google refused (from its QuotaFailure and RetryInfo details)."""
+        if e.code >= 500:
+            return RateLimited(f"{self.model} is overloaded ({e.code} {e.status}); try again later")
+        body = e.details if isinstance(e.details, dict) else {}
+        details = body.get("error", {}).get("details", [])
+        quota = next((v for d in details for v in d.get("violations", [])), {})
+        retry = next((d["retryDelay"] for d in details if "retryDelay" in d), None)
+        if "quotaId" not in quota:
+            return RateLimited(f"{self.model} answered 429 {e.status}: {e.message}")
+        which = f"{quota['quotaId']}, limit {quota.get('quotaValue', '?')}"
+        if "PerDay" in quota["quotaId"]:
+            return RateLimited(
+                f"{self.model} hit its daily limit ({which}); it resets at midnight Pacific",
+                daily=True,
+            )
+        return RateLimited(
+            f"{self.model} hit a rate limit ({which}); retry in {retry or 'a minute'}"
+        )
 
 
 class BudgetedLLM:
@@ -126,7 +150,8 @@ class BudgetedLLM:
             day = self.today()
             if self.store.llm_usage(day, self.name)[0] >= self.daily_budget:
                 raise QuotaExhausted(
-                    f"daily budget of {self.daily_budget} calls to {self.name} used"
+                    f"used today's budget of {self.daily_budget} calls to {self.name} "
+                    "(profile.yaml llm settings); it resets at midnight Pacific"
                 )
             if self._last is not None:
                 wait = self._last + self.min_interval - self.clock()
@@ -137,6 +162,8 @@ class BudgetedLLM:
                 result = self.provider.generate(**kw)
             except RateLimited as e:
                 self.store.count_llm_call(day, self.name, rate_limited=True)
+                if e.daily:
+                    raise QuotaExhausted(str(e)) from None
                 if attempt == 0:
                     self.sleep(self.backoff)
                     continue

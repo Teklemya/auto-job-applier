@@ -74,7 +74,7 @@ def make_writer(
                 attachments=[(profile.resume_path.read_bytes(), "application/pdf")],
             )
         except (QuotaExhausted, LLMError) as e:
-            return ResolvedAnswer(field, None, "llm", False, f"LLM unavailable: {e}")
+            return ResolvedAnswer(field, None, "llm", False, f"no LLM answer: {e}")
         text = d.text.strip()
         if not d.confident or d.missing_facts:
             missing = ", ".join(d.missing_facts) or "unspecified facts"

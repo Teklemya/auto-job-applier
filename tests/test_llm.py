@@ -250,3 +250,69 @@ def test_quota_day_follows_pacific_time():
     # 1am Eastern on the 18th is still the 17th in California, where Google resets quotas
     assert llm.quota_day(datetime(2026, 10, 18, 5, 0, tzinfo=UTC)) == "2026-10-17"
     assert llm.quota_day(datetime(2026, 10, 18, 8, 0, tzinfo=UTC)) == "2026-10-18"
+
+
+# --- what a 429 says: which quota, its limit, and when to try again ---
+
+
+def _quota_429(quota_id, limit="20", retry="36s"):
+    return errors.ClientError(
+        429,
+        {
+            "error": {
+                "code": 429,
+                "message": "You exceeded your current quota.",
+                "status": "RESOURCE_EXHAUSTED",
+                "details": [
+                    {
+                        "@type": "type.googleapis.com/google.rpc.QuotaFailure",
+                        "violations": [{"quotaId": quota_id, "quotaValue": limit}],
+                    },
+                    {"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": retry},
+                ],
+            }
+        },
+    )
+
+
+def _raised(err):
+    g = llm.GeminiProvider(model="gemini-x", client=_Client(err))
+    with pytest.raises(llm.RateLimited) as e:
+        g.generate(system="s", prompt="p", schema=Answer)
+    return e.value
+
+
+def test_a_daily_429_names_the_quota_its_limit_and_the_reset():
+    e = _raised(_quota_429("GenerateRequestsPerDayPerProjectPerModel-FreeTier"))
+    assert e.daily
+    assert str(e) == (
+        "gemini-x hit its daily limit (GenerateRequestsPerDayPerProjectPerModel-FreeTier, "
+        "limit 20); it resets at midnight Pacific"
+    )
+
+
+def test_a_per_minute_429_says_when_to_retry():
+    e = _raised(_quota_429("GenerateRequestsPerMinutePerProjectPerModel-FreeTier", "5"))
+    assert not e.daily
+    assert str(e) == (
+        "gemini-x hit a rate limit (GenerateRequestsPerMinutePerProjectPerModel-FreeTier, "
+        "limit 5); retry in 36s"
+    )
+
+
+def test_a_429_without_details_keeps_googles_message():
+    err = errors.ClientError(429, {"error": {"code": 429, "message": "quota", "status": "X"}})
+    assert str(_raised(err)) == "gemini-x answered 429 X: quota"
+
+
+def test_overload_says_so():
+    err = errors.ServerError(503, {"error": {"code": 503, "status": "UNAVAILABLE"}})
+    assert str(_raised(err)) == "gemini-x is overloaded (503 UNAVAILABLE); try again later"
+
+
+def test_a_daily_429_is_not_retried(store):
+    clock = FakeClock()
+    provider = FakeProvider(llm.RateLimited("daily", daily=True))
+    with pytest.raises(llm.QuotaExhausted, match="daily"):
+        _ask(_budgeted(provider, store, clock))
+    assert len(provider.calls) == 1 and clock.slept == []

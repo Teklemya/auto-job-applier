@@ -270,7 +270,7 @@ def _ask_llm(
             attachments=[(profile.resume_path.read_bytes(), "application/pdf")],
         )
     except (QuotaExhausted, LLMError) as e:
-        return {i: _unresolved(f, f"LLM unavailable: {e}", "llm") for i, f in pending.items()}
+        return {i: _unresolved(f, f"no LLM answer: {e}", "llm") for i, f in pending.items()}
     by_id = {a.id: a for a in out.answers}
     results = {}
     for i, f in pending.items():
