@@ -21,6 +21,7 @@ except for that doc.
 | D8 | Jobright | Read it in the same persistent browser profile, like a human visit (Liked list + >80% match), twice a day. No token scraping. |
 | D10 | LLM budget guards | Limits are settings, not code (free quotas change and are **per model**). Measured 2026-10-17 in AI Studio: Flash-Lite (3.1/3.5) 500/day + 15/min; Flash (3.6–3.8) only 20/day + 5/min. So fit checks use `gemini-3.5-flash-lite` (8 jobs per call, budget 450/day, 4.5s apart, minimal thinking) and form answers + cover letters use `gemini-3.8-flash` (budget 18/day, 12.5s apart). Each model has its own daily budget in the DB. A 429 gets one backoff retry, then counts as quota exhausted: the fit check waits (job stays PENDING) and unanswered fields → draft. Never a guess. Tests use a fake clock. |
 | D9 | Fit rule | The LLM returns a verdict (`strong` / `ok` / `stretch` / `mismatch`) plus a 0–100 score, matched keywords and a reason. Only verdicts in `settings.fit_skip` (default `[mismatch]`) → SKIPPED(fit). The score only orders the queue and never decides a skip. Calibrated at Checkpoint B on ~20 real jobs. |
+| D11 | Workday sign-in | Each company's Workday site has its own account. **"Sign in with Google" first** (`isaac.teklemya@gmail.com`), since it needs no password and no verification email. It is a per-company setting, so with no Google button the tool falls back to **email + one shared password** from the Keychain (service `auto-job-applier-workday`, account = the email). Once an account exists, that company always uses the same method (`ats_accounts`). A verification email or a Google re-confirm → STAGED + notify the owner; if the last link was sent long ago, request a fresh one first. Workday doesn't publish a TTL for account-creation links (reset links: 2h, emailed passcodes: 3 min), so the design never depends on one. Reading the inbox to click links automatically is deferred (needs Gmail 2-step on + an app password). Decided 2026-10-17. |
 
 ## Architecture
 
@@ -63,9 +64,9 @@ and Workday share all the answering logic, and v2's "teach a new portal" only ne
 | `llm.py` | Provider interface + Gemini Flash client (free tier), prompts, rate limiter and daily call budget (D7, D10) |
 | `engines/base.py` | `ATSEngine`: `open`, `extract_fields`, `fill`, `blockers`, `submit`, `save_draft` |
 | `engines/greenhouse.py`, `engines/lever.py` | Single-page forms |
-| `engines/workday.py` | `data-automation-id` selectors kept in one table. Sign in or create the tenant account (password in macOS Keychain). Then loop: extract → resolve → fill → Next until Review, then gate → Submit or "Save and continue later". Email verification forces a draft. |
+| `engines/workday.py` | `data-automation-id` selectors kept in one table. Sign in or create the tenant account (D11: Google first, else Keychain password). Then loop: extract → resolve → fill → Next until Review, then gate → Submit or "Save and continue later". Email verification forces a draft. |
 | `browser.py` | Playwright persistent context (dedicated profile dir, real Chrome channel, headed), with randomized human pacing |
-| `notify.py` | macOS notification plus a run summary ("6 submitted, 3 drafts, 2 manual") |
+| `notify.py` | macOS notification plus a run summary ("6 submitted, 3 drafts, 2 manual"). Optional phone push via an ntfy.sh topic in settings, for "verify your Workday account at X" |
 
 ### Statuses
 `NEW → SKIPPED(reason) | PENDING → APPLIED | STAGED(draft) | FAILED | MANUAL(unsupported site)`.
@@ -83,8 +84,11 @@ in review instead of disappearing.
 ## Owner prerequisites (needed before Phase 3; Phases 1–2 don't need them)
 - Resume PDF and a filled-in `~/.auto-job-applier/profile.yaml`
 - Gemini API key from Google AI Studio (free tier, no card), in `GEMINI_API_KEY` or the Keychain
-- A single Workday email + password, stored in the macOS Keychain
-- One-time `aja login` to sign into Jobright in the tool's browser profile
+- A single Workday password for `isaac.teklemya@gmail.com`, stored in the macOS Keychain
+  (`security add-generic-password -s auto-job-applier-workday -a isaac.teklemya@gmail.com -w`).
+  12+ characters, upper, lower, number, symbol, so every company's rules accept it
+- Gmail 2-step verification turned on (protects every job account; enables the deferred inbox reader)
+- One-time `aja login` to sign into Jobright **and Google** in the tool's browser profile
 
 ## Task breakdown
 On approval this is written to `tasks/plan.md` + `tasks/todo.md`. Verification for every task
@@ -150,7 +154,7 @@ adjusts `fit_skip` if needed (D9).
 ### Phase 3: Real sites (supervised, shadow mode forced on)
 **T11 Jobright collector** (M), moved up at Checkpoint A because Jobright is the main source of
 fresh postings. Files: `browser.py`, `sources/jobright.py`. Persistent browser profile with
-`aja login`. Read the Liked and recommended (>80%) pages, resolve each to its final ATS URL, and
+`aja login` (Jobright + one manual Google sign-in for D11). Read the Liked and recommended (>80%) pages, resolve each to its final ATS URL, and
 feed into T3. *Manual:* one live read whose jobs appear in `aja list` with correct ATS.
 
 **T7 Greenhouse engine + `aja review`** (M). Files: `engines/base.py`, `engines/greenhouse.py`, `cli.py`
@@ -162,11 +166,28 @@ feed into T3. *Manual:* one live read whose jobs appear in `aja list` with corre
 
 **T8 Lever engine** (S). Same acceptance shape as T7.
 
-**T9a Workday auth** (M). Sign in, or create the tenant account using Keychain credentials. An
-email-verification wall → STAGED with a note. Selectors live in one table.
+**T9a Workday auth** (M). Files: `engines/workday.py`, `store.py` (+ `ats_accounts`), `notify.py`
+(minimal, ahead of T12). D11:
+- `ats_accounts` table: `tenant_host`, `email`, `auth_method` (google / password), `status`
+  (none / pending_verification / verified / failed), `created_at`, `last_verify_sent_at`
+- Known tenant → its recorded method. New tenant → Google button if present, else sign in or
+  create with the Keychain password. The method used is recorded
+- Google pop-up: pick the already-signed-in account. Any Google password or re-confirm prompt
+  → STAGED (the tool never types the Google password)
+- Verification wall → STAGED + `pending_verification` + notify. Next run: try sign-in; if it
+  is still unverified and `last_verify_sent_at` is old, resend once, then notify again
+- Selectors live in one table. Fixture tests cover: Google path, password sign-in, create,
+  verification wall, wrong password → `failed`
+- *Manual:* one live Google tenant (Etsy or Visa) and one live password tenant reach the first
+  wizard page
 
 **T9b Workday wizard + native draft** (M). Loop through extract → resolve → fill → Next until
 Review. On gate failure, "Save and continue later". *Manual:* 2 live tenants reach Review.
+
+### Later (not v1)
+- Inbox reader: IMAP with a Gmail app password (needs 2-step on). Watches for the tenant's
+  verification email and opens the link only if its domain matches that tenant, within minutes
+  of account creation. Add only if verification notifications become frequent.
 
 ### Checkpoint C: the owner reviews a week of shadow-mode drafts
 
@@ -193,6 +214,8 @@ floor.
 | Bot detection or CAPTCHAs | Med | Headed real Chrome, residential IP, human pacing, low volume. CAPTCHA → draft |
 | Bad answer submitted under the owner's name | High | Deterministic gate, sponsorship answers hard-coded, shadow week, daily cap |
 | Jobright layout change | Low | Isolated reader. SimplifyJobs keeps working |
+| Google blocks sign-in in an automated browser ("browser may not be secure") | Med | Owner signs into Google by hand once in `aja login`, in a normally launched Chrome; automation attaches afterwards (CDP if the persistent context gets blocked; checked at T11). Re-confirm prompt → STAGED + notify |
+| Verification link expires before the owner clicks it | Low | Resend just before notifying; the job waits as STAGED, never lost |
 
 ## Verification
 - **Unit:**
