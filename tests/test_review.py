@@ -88,7 +88,7 @@ def test_skipped_questions_stay_blocking(store):
 
 
 def test_an_owner_answer_must_be_one_of_the_known_options(store):
-    with pytest.raises(ValueError, match="Yes, No"):
+    with pytest.raises(ValueError, match="'Maybe' doesn't pick exactly one option"):
         review.apply_answers(draft(), {"question_7": "Maybe"}, AnswerBank(store))
 
 
@@ -183,7 +183,8 @@ def test_review_without_a_submit_keeps_the_draft(aja_home, staged_lyft):
 def test_review_asks_again_when_the_answer_is_not_an_option(aja_home, staged_lyft):
     job_id, session = staged_lyft
     result = runner.invoke(cli.app, ["review", str(job_id)], input="\nmaybe\nNo\nn\n")
-    assert "choose one of Yes, No" in result.output
+    assert "  1. Yes\n  2. No" in result.output
+    assert "'maybe' doesn't pick exactly one option. Type its number (1-2)" in result.output
     assert ("question_7", "No") in {(a.dom_id, a.value) for a in session.filled}
 
 
@@ -235,3 +236,13 @@ def test_review_refills_from_the_draft_without_downloading_the_questions(aja_hom
     job_id, session = staged_lyft
     runner.invoke(cli.app, ["review", str(job_id)], input="\n\nn\n")
     assert session.opened_with == [False]
+
+
+def test_an_owner_can_answer_with_the_option_number(store):
+    packet = review.apply_answers(draft(), {"question_7": "2"}, AnswerBank(store))
+    assert packet.answers[2].value == "No"
+
+
+def test_an_option_number_out_of_range_is_not_an_answer(store):
+    with pytest.raises(ValueError):
+        review.apply_answers(draft(), {"question_7": "3"}, AnswerBank(store))

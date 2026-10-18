@@ -584,3 +584,13 @@ def test_without_an_explanation_open_ended_questions_keep_todays_answer(profile,
     label = "Please describe your current work authorization status."
     [a] = run([F(label, "textarea")], profile, bank)
     assert a.value == "Yes"
+
+
+def test_a_non_hyphen_prefix_is_not_a_negation():
+    # "non-immigrant" is not a "no": the F-1 option must stay reachable, and a bare "Yes"
+    # fits both "Yes" options, so it must not pick the citizen one.
+    field = F(
+        "Are you currently authorized to work in the United States?", "select", True, SEATGEEK_AUTH
+    )
+    assert resolver.match_option("F-1 OPT", field) == SEATGEEK_AUTH[1]
+    assert resolver.match_option("Yes", field) is None

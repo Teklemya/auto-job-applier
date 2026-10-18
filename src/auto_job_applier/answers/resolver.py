@@ -176,6 +176,11 @@ def _work_auth_value(label: str, p: Profile) -> Value:
     return None
 
 
+def _negated(text: str) -> bool:
+    # "Non-binary", "non-immigrant visa": a prefix, not a "no"
+    return bool(set(normalize(re.sub(r"\bnon-", "non", text, flags=re.I)).split()) & _NEGATIONS)
+
+
 def match_option(value: Value, field: FormField) -> str | None:
     """The form's option for `value`, or the text itself for free-text fields."""
     if value is None:
@@ -202,7 +207,7 @@ def match_option(value: Value, field: FormField) -> str | None:
         hits = []
         for o in field.options:
             ow = set(normalize(o).split())
-            same_polarity = bool(ow & _NEGATIONS) == bool(words & _NEGATIONS)
+            same_polarity = _negated(o) == _negated(value)
             if ow and same_polarity and (words <= ow or ow <= words):
                 hits.append(o)
     return hits[0] if len(hits) == 1 else None

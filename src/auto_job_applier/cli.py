@@ -302,10 +302,13 @@ def _review_list(store: JobStore) -> None:
 
 def _ask_blockers(packet: Packet, bank: AnswerBank) -> Packet:
     for pf in review.blocking_fields(packet):
-        hint = f" [{' / '.join(pf.field.options)}]" if pf.field.options else ""
+        typer.echo(pf.field.label)
+        for n, option in enumerate(pf.field.options, 1):
+            typer.echo(f"  {n}. {option}")
+        kind = "number or text" if pf.field.options else "text"
         while True:
             value = typer.prompt(
-                f"{pf.field.label}{hint} (Enter: fill it in the browser)",
+                f"Answer ({kind}; Enter: fill it in the browser)",
                 default="",
                 show_default=False,
             )
