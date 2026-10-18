@@ -58,6 +58,11 @@ def test_an_owner_answer_clears_its_blocker(store):
     assert packet.blockers == ["could not fill: Education: Degree"]
 
 
+def test_answering_a_field_the_page_rejected_clears_its_blocker(store):
+    packet = review.apply_answers(draft(), {"degree--0": "Bachelor's Degree"}, AnswerBank(store))
+    assert packet.blockers == ["May we contact your current employer?"]
+
+
 def test_owner_answers_go_into_the_answer_bank(store):
     bank = AnswerBank(store)
     review.apply_answers(draft(), {"degree--0": "Bachelor's Degree"}, bank)
@@ -86,13 +91,14 @@ LYFT = Job(
 
 
 class ReviewSession:
-    def __init__(self):
+    def __init__(self, rejects=()):
+        self.rejects = set(rejects)
         self.filled = []
         self.highlighted = []
 
     def fill(self, plan):
-        self.filled += plan
-        return []
+        self.filled += [a for a in plan if a.dom_id not in self.rejects]
+        return [a.dom_id for a in plan if a.dom_id in self.rejects]
 
     def highlight(self, dom_ids):
         self.highlighted += dom_ids
@@ -195,3 +201,16 @@ def test_a_work_authorization_answer_points_to_the_profile_not_the_bank(aja_home
     result = runner.invoke(cli.app, ["review", str(job_id)], input="I am authorized\nn\n")
     assert "approved_answers" in result.output
     assert '"I am authorized"' in result.output
+
+
+def test_review_highlights_fields_the_refill_could_not_set(aja_home, staged_lyft, monkeypatch):
+    job_id, _ = staged_lyft
+    session = ReviewSession(rejects={"first_name"})
+
+    @contextmanager
+    def fake_session(job):
+        yield session
+
+    monkeypatch.setattr(cli, "_greenhouse_session", fake_session)
+    runner.invoke(cli.app, ["review", str(job_id)], input="Bachelor's Degree\nNo\nn\n")
+    assert session.highlighted == ["first_name"]

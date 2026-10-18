@@ -222,6 +222,9 @@ def write(
         typer.echo(f"Not confident, would stage a draft: {answer.reason}")
 
 
+_FILLABLE = (Status.PENDING, Status.STAGED)
+
+
 @contextmanager
 def _greenhouse_session(job: Job) -> Iterator[greenhouse.GreenhouseSession]:
     from playwright.sync_api import sync_playwright
@@ -247,6 +250,13 @@ def apply_job(job_id: int) -> None:
         if job.ats is not ATS.GREENHOUSE:
             typer.echo(
                 f"#{job_id} is on {job.ats}; only Greenhouse can be filled so far.", err=True
+            )
+            raise typer.Exit(1)
+        if job.status not in _FILLABLE:
+            # APPLIED was sent; SKIPPED failed a filter or is a duplicate; NEW is unscreened.
+            why = f": {job.reason}" if job.reason else ""
+            typer.echo(
+                f"#{job_id} is {job.status}{why}. Only queued or staged jobs are filled.", err=True
             )
             raise typer.Exit(1)
         profile = load_profile(paths.profile_path())

@@ -11,7 +11,7 @@ from auto_job_applier.answers import resolver
 from auto_job_applier.answers.bank import AnswerBank
 from auto_job_applier.engines import greenhouse
 from auto_job_applier.engines.base import PageField
-from auto_job_applier.models import ATS, FormField, Job
+from auto_job_applier.models import ATS, FormField, Job, Status
 from auto_job_applier.profile import load_profile
 from auto_job_applier.store import JobStore
 
@@ -229,13 +229,23 @@ def home_with_profile(aja_home, example_profile_data):
     return aja_home
 
 
-def queue(home, job):
+def queue(home, job, status=Status.PENDING, reason=None):
     s = JobStore(home / "jobs.db")
     s.upsert_many([job])
     job_id = s.list()[0].id
+    s.set_status(job_id, status, reason)
     s.save_description(job_id, "Build rides.")
     s.close()
     return job_id
+
+
+def fake_greenhouse(monkeypatch):
+    @contextmanager
+    def fake_session(job):
+        yield FakeSession(lyft_fields())
+
+    monkeypatch.setattr(cli, "_greenhouse_session", fake_session)
+    monkeypatch.setattr(cli, "make_llm", lambda *a: UnsureLLM())
 
 
 def test_apply_stages_a_greenhouse_job_and_lists_what_blocks_it(home_with_profile, monkeypatch):
@@ -270,3 +280,34 @@ def test_apply_refuses_an_unknown_job(home_with_profile):
     result = runner.invoke(cli.app, ["apply", "999"])
     assert result.exit_code == 1
     assert "No job #999" in result.output
+
+
+def test_apply_can_redo_a_draft(home_with_profile, monkeypatch):
+    job_id = queue(home_with_profile, LYFT, Status.STAGED, "needs review: 3 blocking")
+    fake_greenhouse(monkeypatch)
+    result = runner.invoke(cli.app, ["apply", str(job_id)])
+    assert result.exit_code == 0, result.output
+
+
+@pytest.mark.parametrize(
+    ("status", "reason"),
+    [
+        (Status.APPLIED, "submitted by the owner at review"),
+        (Status.SKIPPED, "citizenship required (🇺🇸)"),
+        (Status.SKIPPED, "duplicate of #153"),
+        (Status.NEW, None),
+    ],
+)
+def test_apply_leaves_jobs_that_are_not_queued_alone(
+    home_with_profile, monkeypatch, status, reason
+):
+    # Re-staging an APPLIED job would hide that it was sent; a SKIPPED one would bypass the
+    # filters and the one-application-per-company+role rule.
+    job_id = queue(home_with_profile, LYFT, status, reason)
+    fake_greenhouse(monkeypatch)
+    result = runner.invoke(cli.app, ["apply", str(job_id)])
+    assert result.exit_code == 1
+    assert status.value in result.output
+    s = JobStore(home_with_profile / "jobs.db")
+    assert s.get(job_id).status is status
+    s.close()
