@@ -7,10 +7,12 @@ is an append-only audit log of every status change.
 import json
 import sqlite3
 from collections.abc import Iterable
+from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
 
-from .models import ATS, Fit, Job, Status, Tier
+from .engines.base import Packet, PageField
+from .models import ATS, Fit, FormField, Job, ResolvedAnswer, Status, Tier
 
 _STATUSES = ", ".join(f"'{s}'" for s in Status)
 # Not yet in flight: safe to re-screen when the posting's facts change.
@@ -67,6 +69,14 @@ CREATE TABLE IF NOT EXISTS answer_bank (
     question      TEXT NOT NULL,
     value         TEXT NOT NULL,
     updated_at    TEXT NOT NULL
+);
+
+-- The resolved form of a staged job (D3): `aja review` re-fills from it without the LLM.
+CREATE TABLE IF NOT EXISTS packets (
+    job_id      INTEGER PRIMARY KEY REFERENCES jobs (id) ON DELETE CASCADE,
+    entries     TEXT NOT NULL,
+    blockers    TEXT NOT NULL,
+    saved_at    TEXT NOT NULL
 );
 
 -- LLM calls per local day and model: daily budgets (D10) hold across runs.
@@ -281,6 +291,38 @@ class JobStore:
         return Fit(
             row["verdict"], row["score"], json.loads(row["keywords"]), row["reason"], row["source"]
         )
+
+    def save_packet(self, job_id: int, packet: Packet) -> None:
+        entries = [
+            {
+                "dom_id": pf.dom_id,
+                "field": asdict(pf.field),
+                "value": a.value,
+                "source": a.source,
+                "confident": a.confident,
+                "reason": a.reason,
+            }
+            for pf, a in zip(packet.fields, packet.answers, strict=True)
+        ]
+        with self._conn:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO packets (job_id, entries, blockers, saved_at)"
+                " VALUES (?, ?, ?, ?)",
+                (job_id, json.dumps(entries), json.dumps(packet.blockers), _now()),
+            )
+
+    def get_packet(self, job_id: int) -> Packet | None:
+        row = self._conn.execute("SELECT * FROM packets WHERE job_id = ?", (job_id,)).fetchone()
+        if row is None:
+            return None
+        fields, answers = [], []
+        for e in json.loads(row["entries"]):
+            field = FormField(**e["field"])
+            fields.append(PageField(e["dom_id"], field))
+            answers.append(
+                ResolvedAnswer(field, e["value"], e["source"], e["confident"], e["reason"])
+            )
+        return Packet(fields, answers, json.loads(row["blockers"]))
 
     def bank_entries(self) -> list[tuple[str, str]]:
         """[(question_key, value)]"""

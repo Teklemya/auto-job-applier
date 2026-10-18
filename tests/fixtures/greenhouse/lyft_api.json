@@ -1,0 +1,550 @@
+{
+ "absolute_url": "https://app.careerpuck.com/job-board/lyft/job/8896679002?gh_jid=8896679002",
+ "data_compliance": [
+  {
+   "type": "gdpr",
+   "requires_consent": false,
+   "requires_processing_consent": false,
+   "requires_retention_consent": false,
+   "retention_period": null,
+   "demographic_data_consent_applies": false
+  }
+ ],
+ "education": "education_required",
+ "employment": "employment_required",
+ "internal_job_id": 6563466002,
+ "location": {
+  "name": "San Francisco, CA"
+ },
+ "metadata": [
+  {
+   "id": 4345907002,
+   "name": "Career Site Category",
+   "value": "Software Engineering",
+   "value_type": "single_select"
+  }
+ ],
+ "id": 8896679002,
+ "updated_at": "2026-10-16T22:47:42-04:00",
+ "requisition_id": "111269",
+ "title": "Software Engineer",
+ "company_name": "Lyft",
+ "first_published": "2026-10-16T22:47:42-04:00",
+ "language": "en",
+ "application_deadline": null,
+ "content": "(job description trimmed)",
+ "departments": [
+  {
+   "id": 4140216002,
+   "name": "Driver, Supply & PII",
+   "child_ids": [
+    4140217002,
+    4082096002,
+    4135504002,
+    4135506002,
+    4140222002,
+    4082098002,
+    4135507002,
+    4140218002,
+    4140219002,
+    4140220002,
+    4140221002,
+    4140223002,
+    4140224002
+   ],
+   "parent_id": 4042810002
+  }
+ ],
+ "offices": [
+  {
+   "id": 4000998002,
+   "name": "San Francisco Office",
+   "location": "San Francisco, California, United States",
+   "child_ids": [],
+   "parent_id": 4031979002
+  }
+ ],
+ "ai_disclaimer": null,
+ "include_ai_disclaimer": null,
+ "ai_opt_out_request_url": null,
+ "compliance": [
+  {
+   "type": "eeoc",
+   "questions": [
+    {
+     "required": true,
+     "label": "VeteranStatus",
+     "fields": [
+      {
+       "name": "veteran_status",
+       "type": "multi_value_single_select",
+       "values": [
+        {
+         "label": "I don't wish to answer",
+         "value": "3"
+        },
+        {
+         "label": "I identify as one or more of the classifications of a protected veteran",
+         "value": "2"
+        },
+        {
+         "label": "I am not a protected veteran",
+         "value": "1"
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "description": "&lt;p&gt;\n  If you believe you belong to any of the categories of protected veterans listed below, please indicate by making the appropriate selection.\n  As a government contractor subject to the Vietnam Era Veterans&#39; Readjustment Assistance Act (VEVRAA), we request this information in order to measure\n  the effectiveness of the outreach and positive recruitment efforts we undertake pursuant to VEVRAA. Classification of protected categories\n  is as follows:\n&lt;/p&gt;\n&lt;p&gt;A &quot;disabled veteran&quot; is one of the following: a veteran of the U.S. military, ground, naval or air service who is entitled to compensation (or who but for the receipt of military retired pay would be entitled to compensation) under laws administered by the Secretary of Veterans Affairs; or a person who was discharged or released from active duty because of a service-connected disability.&lt;/p&gt;\n&lt;p&gt;A &quot;recently separated veteran&quot; means any veteran during the three-year period beginning on the date of such veteran&#39;s discharge or release from active duty in the U.S. military, ground, naval, or air service.&lt;/p&gt;\n&lt;p&gt;An &quot;active duty wartime or campaign badge veteran&quot; means a veteran who served on active duty in the U.S. military, ground, naval or air service during a war, or in a campaign or expedition for which a campaign badge has been authorized under the laws administered by the Department of Defense.&lt;/p&gt;\n&lt;p&gt;An &quot;Armed forces service medal veteran&quot; means a veteran who, while serving on active duty in the U.S. military, ground, naval or air service, participated in a United States military operation for which an Armed Forces service medal was awarded pursuant to Executive Order 12985.&lt;/p&gt;\n"
+  },
+  {
+   "type": "eeoc",
+   "questions": [
+    {
+     "required": true,
+     "label": "Race",
+     "fields": [
+      {
+       "name": "race",
+       "type": "multi_value_single_select",
+       "values": [
+        {
+         "label": "Decline To Self Identify",
+         "value": "8"
+        },
+        {
+         "label": "Two or More Races",
+         "value": "7"
+        },
+        {
+         "label": "Native Hawaiian or Other Pacific Islander",
+         "value": "6"
+        },
+        {
+         "label": "White",
+         "value": "5"
+        },
+        {
+         "label": "Hispanic or Latino",
+         "value": "4"
+        },
+        {
+         "label": "Black or African American",
+         "value": "3"
+        },
+        {
+         "label": "Asian",
+         "value": "2"
+        },
+        {
+         "label": "American Indian or Alaskan Native",
+         "value": "1"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "required": true,
+     "label": "Gender",
+     "fields": [
+      {
+       "name": "gender",
+       "type": "multi_value_single_select",
+       "values": [
+        {
+         "label": "Decline To Self Identify",
+         "value": "3"
+        },
+        {
+         "label": "Female",
+         "value": "2"
+        },
+        {
+         "label": "Male",
+         "value": "1"
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "description": "&lt;h3&gt;&lt;strong&gt;Voluntary Self-Identification&lt;/strong&gt;&lt;/h3&gt;&lt;br/&gt;&lt;p&gt;For government reporting purposes, we ask candidates to respond to the below self-identification survey.\nCompletion of the form is entirely voluntary. Whatever your decision, it will not be considered in the hiring\nprocess or thereafter. Any information that you do provide will be recorded and maintained in a\nconfidential file.&lt;/p&gt;\n\n&lt;p&gt;As set forth in Lyft’s Equal Employment Opportunity policy,\nwe do not discriminate on the basis of any protected group status under any applicable law.&lt;/p&gt;\n"
+  }
+ ],
+ "demographic_questions": null,
+ "questions": [
+  {
+   "description": null,
+   "label": "First Name",
+   "required": true,
+   "fields": [
+    {
+     "name": "first_name",
+     "type": "input_text",
+     "values": []
+    }
+   ]
+  },
+  {
+   "description": null,
+   "label": "Last Name",
+   "required": true,
+   "fields": [
+    {
+     "name": "last_name",
+     "type": "input_text",
+     "values": []
+    }
+   ]
+  },
+  {
+   "description": null,
+   "label": "Email",
+   "required": true,
+   "fields": [
+    {
+     "name": "email",
+     "type": "input_text",
+     "values": []
+    }
+   ]
+  },
+  {
+   "description": null,
+   "label": "Phone",
+   "required": true,
+   "fields": [
+    {
+     "name": "phone",
+     "type": "input_text",
+     "values": []
+    }
+   ]
+  },
+  {
+   "description": null,
+   "label": "Resume/CV",
+   "required": true,
+   "fields": [
+    {
+     "name": "resume",
+     "type": "input_file",
+     "values": []
+    },
+    {
+     "name": "resume_text",
+     "type": "textarea",
+     "values": []
+    }
+   ]
+  },
+  {
+   "description": null,
+   "label": "Please enter your relevant employment and military service above using the + Add Another Employment link.",
+   "required": true,
+   "fields": [
+    {
+     "name": "question_38857526002",
+     "type": "multi_value_single_select",
+     "values": [
+      {
+       "label": "Thank you",
+       "value": 256460547002
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "description": null,
+   "label": "May we contact your current employer?",
+   "required": true,
+   "fields": [
+    {
+     "name": "question_38857527002",
+     "type": "multi_value_single_select",
+     "values": [
+      {
+       "label": "Yes",
+       "value": 1
+      },
+      {
+       "label": "No",
+       "value": 0
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "description": null,
+   "label": "Can you perform these essential functions of the job with reasonable accommodation?",
+   "required": true,
+   "fields": [
+    {
+     "name": "question_38857528002",
+     "type": "multi_value_single_select",
+     "values": [
+      {
+       "label": "Yes",
+       "value": 1
+      },
+      {
+       "label": "No",
+       "value": 0
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "description": null,
+   "label": "Please describe any need for a reasonable accommodation for this hiring process (no documentation required).",
+   "required": false,
+   "fields": [
+    {
+     "name": "question_38857529002",
+     "type": "input_text",
+     "values": []
+    }
+   ]
+  },
+  {
+   "description": null,
+   "label": "Work Authorization",
+   "required": true,
+   "fields": [
+    {
+     "name": "question_38857530002",
+     "type": "multi_value_single_select",
+     "values": [
+      {
+       "label": "I am authorized to work for any employer in the country in which this position is based.",
+       "value": 256460548002
+      },
+      {
+       "label": "I require/will require Lyft's sponsorship to obtain work authorization in the country in which this position is based (e.g. H-1B, TN, etc.)",
+       "value": 256460549002
+      },
+      {
+       "label": "My status to work in the country in which this position is based is unknown.",
+       "value": 256460550002
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "description": "<p><a title=\"Lyft Candidate Privacy Policy (United States)\" href=\"https://www.lyft.com/privacy/candidate\" target=\"_blank\" rel=\"noopener\">Lyft Candidate Privacy Policy (United States)</a></p>",
+   "label": "Please review the linked document:",
+   "required": true,
+   "fields": [
+    {
+     "name": "question_38857531002",
+     "type": "multi_value_single_select",
+     "values": [
+      {
+       "label": "I acknowledge that I have read and understood the terms of the Lyft Candidate Privacy Notice.",
+       "value": 256460551002
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "description": "<p class=\"p1\">Lyft is committed to maintaining the same safe and inclusive environment for candidates as for our team members. Addressing you by the correct pronoun is an important part of this commitment.</p>",
+   "label": "Please share your gender pronouns.",
+   "required": false,
+   "fields": [
+    {
+     "name": "question_38857532002[]",
+     "type": "multi_value_multi_select",
+     "values": [
+      {
+       "label": "She / Her",
+       "value": 256460552002
+      },
+      {
+       "label": "He / Him",
+       "value": 256460553002
+      },
+      {
+       "label": "They / Them",
+       "value": 256460554002
+      },
+      {
+       "label": "Ae / Aer",
+       "value": 256460555002
+      },
+      {
+       "label": "Ey / Em",
+       "value": 256460556002
+      },
+      {
+       "label": "Fae / Faer",
+       "value": 256460557002
+      },
+      {
+       "label": "Ne / Nem",
+       "value": 256460558002
+      },
+      {
+       "label": "Per / Per",
+       "value": 256460559002
+      },
+      {
+       "label": "Ve / Vir",
+       "value": 256460560002
+      },
+      {
+       "label": "Xe / Xem",
+       "value": 256460561002
+      },
+      {
+       "label": "Xie / Hir",
+       "value": 256460562002
+      },
+      {
+       "label": "Yo / Yo",
+       "value": 256460563002
+      },
+      {
+       "label": "Ze / Hir",
+       "value": 256460564002
+      },
+      {
+       "label": "Ze / Zir",
+       "value": 256460565002
+      },
+      {
+       "label": "Other",
+       "value": 256460566002
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "description": null,
+   "label": "LinkedIn Profile",
+   "required": false,
+   "fields": [
+    {
+     "name": "question_38857533002",
+     "type": "input_text",
+     "values": []
+    }
+   ]
+  },
+  {
+   "description": null,
+   "label": "Have you been employed by Lyft, or any subsidiary, affiliate, or business unit of Lyft, in the past (whether on a full-time or part-time basis)?",
+   "required": true,
+   "fields": [
+    {
+     "name": "question_38857534002",
+     "type": "multi_value_single_select",
+     "values": [
+      {
+       "label": "Yes",
+       "value": 1
+      },
+      {
+       "label": "No",
+       "value": 0
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "description": null,
+   "label": "Zip / postal code",
+   "required": true,
+   "fields": [
+    {
+     "name": "question_38857535002",
+     "type": "input_text",
+     "values": []
+    }
+   ]
+  },
+  {
+   "description": null,
+   "label": "This position is based in the United States. Do you currently reside in commutable proximity to a Lyft Office located in San Francisco, or are you open to relocating?",
+   "required": true,
+   "fields": [
+    {
+     "name": "question_38857536002",
+     "type": "multi_value_single_select",
+     "values": [
+      {
+       "label": "I am willing to relocate before starting employment.",
+       "value": 256460567002
+      },
+      {
+       "label": "I am not willing to relocate before starting employment.",
+       "value": 256460568002
+      },
+      {
+       "label": "I already reside near a Lyft office and I am able to work at a Lyft On-site Office.",
+       "value": 256460569002
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "description": "<p>Please enter your full name and today's date to signify your electronic signature for this statement.</p>",
+   "label": "I certify that the facts set forth in this Application for Employment are true and complete to the best of my knowledge. I understand that if I am employed, false statements, omissions or misrepresentations may result in my dismissal. I authorize the Employer to make an investigation of any of the facts set forth in this application and release the Employer from any liability. The employer may contact any provided references. ",
+   "required": true,
+   "fields": [
+    {
+     "name": "question_38857537002",
+     "type": "input_text",
+     "values": []
+    }
+   ]
+  }
+ ],
+ "location_questions": [
+  {
+   "description": null,
+   "label": "Longitude",
+   "required": true,
+   "fields": [
+    {
+     "name": "longitude",
+     "type": "input_hidden",
+     "values": []
+    }
+   ]
+  },
+  {
+   "description": null,
+   "label": "Latitude",
+   "required": true,
+   "fields": [
+    {
+     "name": "latitude",
+     "type": "input_hidden",
+     "values": []
+    }
+   ]
+  },
+  {
+   "description": null,
+   "label": "Location",
+   "required": true,
+   "fields": [
+    {
+     "name": "location",
+     "type": "input_text",
+     "values": []
+    }
+   ]
+  }
+ ]
+}

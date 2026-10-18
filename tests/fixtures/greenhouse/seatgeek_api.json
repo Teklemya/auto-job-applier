@@ -1,0 +1,560 @@
+{
+ "absolute_url": "https://seatgeek.com/jobs/8227548?gh_jid=8227548",
+ "data_compliance": [
+  {
+   "type": "gdpr",
+   "requires_consent": false,
+   "requires_processing_consent": false,
+   "requires_retention_consent": false,
+   "retention_period": null,
+   "demographic_data_consent_applies": false
+  }
+ ],
+ "education": "education_required",
+ "internal_job_id": 122958,
+ "location": {
+  "name": "New York, New York"
+ },
+ "metadata": null,
+ "id": 8227548,
+ "updated_at": "2026-09-23T16:43:35-04:00",
+ "requisition_id": null,
+ "title": "Software Engineer - New Grad",
+ "company_name": "SeatGeek",
+ "first_published": "2026-09-23T16:43:35-04:00",
+ "language": "en",
+ "application_deadline": null,
+ "content": "(job description trimmed)",
+ "departments": [
+  {
+   "id": 2997,
+   "name": "Software Engineering",
+   "child_ids": [
+    55385
+   ],
+   "parent_id": 80265
+  }
+ ],
+ "offices": [
+  {
+   "id": 84079,
+   "name": "United States",
+   "location": "United States",
+   "child_ids": [],
+   "parent_id": null
+  }
+ ],
+ "ai_disclaimer": null,
+ "include_ai_disclaimer": null,
+ "ai_opt_out_request_url": "http://app.greenhouse.io/ai_opt_out_request/job_post/8227548/ai_opt_out",
+ "compliance": null,
+ "demographic_questions": {
+  "header": "Voluntary Demographic Questions",
+  "description": "<p><span style=\"font-weight: 400;\">We love live events because they bring people of all walks together. We strive to bring the same feeling of connectedness into our own organization by embracing people of all backgrounds because we understand that different ideas and perspectives power the innovation that is key to our success.</span></p>\n<p><span style=\"font-weight: 400;\">In order to better understand our efforts in this regard, </span><span style=\"font-weight: 400;\">we invite applicants to self-identify as to their gender, sexual orientation, race/ethnicity, and veteran status. Completion of this form is entirely voluntary and declining to provide this information will not subject you to adverse treatment. Any information that you do provide will be maintained confidentially and will not be shared with hiring managers.</span></p>\n<p><span style=\"font-weight: 400;\">SeatGeek is committed to providing equal employment opportunities to all employees and applicants for employment regardless of race, color, religion, creed, age, national origin or ancestry, ethnicity, sex, sexual orientation, gender identity or expression, disability, military or veteran status, or any other category protected by federal, state, or local law. You are being given the opportunity to provide the following information in order to help us measure our own diversity and inclusion efforts and to comply with applicable federal and state Equal Employment Opportunity record-keeping and reporting obligations.</span></p>\n<p> </p>",
+  "questions": [
+   {
+    "id": 41,
+    "label": "I identify my gender as",
+    "required": null,
+    "type": "multi_value_multi_select",
+    "answer_options": [
+     {
+      "id": 188,
+      "label": "Male",
+      "free_form": false,
+      "decline_to_answer": false
+     },
+     {
+      "id": 189,
+      "label": "Female",
+      "free_form": false,
+      "decline_to_answer": false
+     },
+     {
+      "id": 190,
+      "label": "Non-binary",
+      "free_form": false,
+      "decline_to_answer": false
+     },
+     {
+      "id": 191,
+      "label": "Third gender",
+      "free_form": false,
+      "decline_to_answer": false
+     },
+     {
+      "id": 192,
+      "label": "Prefer not to say",
+      "free_form": false,
+      "decline_to_answer": false
+     },
+     {
+      "id": 193,
+      "label": "Prefer to self-describe",
+      "free_form": true,
+      "decline_to_answer": false
+     }
+    ]
+   },
+   {
+    "id": 42,
+    "label": "I consider myself a member of the LGBTQ+  community",
+    "required": null,
+    "type": "multi_value_multi_select",
+    "answer_options": [
+     {
+      "id": 194,
+      "label": "Yes",
+      "free_form": false,
+      "decline_to_answer": false
+     },
+     {
+      "id": 195,
+      "label": "No",
+      "free_form": false,
+      "decline_to_answer": false
+     },
+     {
+      "id": 196,
+      "label": "Prefer not to say",
+      "free_form": false,
+      "decline_to_answer": false
+     }
+    ]
+   },
+   {
+    "id": 43,
+    "label": "Race",
+    "required": null,
+    "type": "multi_value_multi_select",
+    "answer_options": [
+     {
+      "id": 197,
+      "label": "American Indian or Alaskan Native",
+      "free_form": false,
+      "decline_to_answer": false
+     },
+     {
+      "id": 198,
+      "label": "Asian",
+      "free_form": false,
+      "decline_to_answer": false
+     },
+     {
+      "id": 199,
+      "label": "Black or African American",
+      "free_form": false,
+      "decline_to_answer": false
+     },
+     {
+      "id": 200,
+      "label": "Hispanic or Latinx",
+      "free_form": false,
+      "decline_to_answer": false
+     },
+     {
+      "id": 201,
+      "label": "White",
+      "free_form": false,
+      "decline_to_answer": false
+     },
+     {
+      "id": 202,
+      "label": "Native Hawaiian or Other Pacific Islander",
+      "free_form": false,
+      "decline_to_answer": false
+     },
+     {
+      "id": 203,
+      "label": "Two or more races",
+      "free_form": false,
+      "decline_to_answer": false
+     },
+     {
+      "id": 204,
+      "label": "Prefer not to say",
+      "free_form": false,
+      "decline_to_answer": false
+     }
+    ]
+   },
+   {
+    "id": 44,
+    "label": "Veteran Status",
+    "required": null,
+    "type": "multi_value_multi_select",
+    "answer_options": [
+     {
+      "id": 205,
+      "label": "I am not a protected veteran",
+      "free_form": false,
+      "decline_to_answer": false
+     },
+     {
+      "id": 206,
+      "label": "I identify as one or more of the classifications of a protected veteran",
+      "free_form": false,
+      "decline_to_answer": false
+     },
+     {
+      "id": 207,
+      "label": "Prefer not to say",
+      "free_form": false,
+      "decline_to_answer": false
+     }
+    ]
+   },
+   {
+    "id": 45,
+    "label": "Disability Status",
+    "required": null,
+    "type": "multi_value_multi_select",
+    "answer_options": [
+     {
+      "id": 208,
+      "label": "Yes, I have a disability or previously had a disability",
+      "free_form": false,
+      "decline_to_answer": false
+     },
+     {
+      "id": 209,
+      "label": "No, I don't have a disability",
+      "free_form": false,
+      "decline_to_answer": false
+     },
+     {
+      "id": 210,
+      "label": "Prefer not to say",
+      "free_form": false,
+      "decline_to_answer": false
+     }
+    ]
+   }
+  ]
+ },
+ "questions": [
+  {
+   "description": null,
+   "label": "First Name",
+   "required": true,
+   "fields": [
+    {
+     "name": "first_name",
+     "type": "input_text",
+     "values": []
+    }
+   ]
+  },
+  {
+   "description": null,
+   "label": "Last Name",
+   "required": true,
+   "fields": [
+    {
+     "name": "last_name",
+     "type": "input_text",
+     "values": []
+    }
+   ]
+  },
+  {
+   "description": null,
+   "label": "Email",
+   "required": true,
+   "fields": [
+    {
+     "name": "email",
+     "type": "input_text",
+     "values": []
+    }
+   ]
+  },
+  {
+   "description": null,
+   "label": "Phone",
+   "required": true,
+   "fields": [
+    {
+     "name": "phone",
+     "type": "input_text",
+     "values": []
+    }
+   ]
+  },
+  {
+   "description": null,
+   "label": "Resume/CV",
+   "required": true,
+   "fields": [
+    {
+     "name": "resume",
+     "type": "input_file",
+     "values": []
+    },
+    {
+     "name": "resume_text",
+     "type": "textarea",
+     "values": []
+    }
+   ]
+  },
+  {
+   "description": null,
+   "label": "Cover Letter",
+   "required": false,
+   "fields": [
+    {
+     "name": "cover_letter",
+     "type": "input_file",
+     "values": []
+    },
+    {
+     "name": "cover_letter_text",
+     "type": "textarea",
+     "values": []
+    }
+   ]
+  },
+  {
+   "description": null,
+   "label": "Are you currently authorized to work in the United States?",
+   "required": true,
+   "fields": [
+    {
+     "name": "question_69402092",
+     "type": "multi_value_single_select",
+     "values": [
+      {
+       "label": "Yes, I have US work authorization as a US Citizen or US Permanent Resident/Green Card Holder",
+       "value": 753105622
+      },
+      {
+       "label": "Yes, I have US Work authorization via a non-immigrant visa (H-1B, L-1, F-1 OPT OR CPT, TN, E-3, O-1, Dependent Visa)",
+       "value": 753105623
+      },
+      {
+       "label": "No, I am not currently authorized to work in the United States",
+       "value": 753105624
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "description": null,
+   "label": "Will you now, or in the future, require employer visa sponsorship (e.g. H-1B)?",
+   "required": true,
+   "fields": [
+    {
+     "name": "question_69402093",
+     "type": "multi_value_single_select",
+     "values": [
+      {
+       "label": "Yes",
+       "value": 1
+      },
+      {
+       "label": "No",
+       "value": 0
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "description": null,
+   "label": "This role is located in New York City and you will be required to be in the NYC office at least 50% of the work week. Are you either living in or willing to relocate to New York City?",
+   "required": true,
+   "fields": [
+    {
+     "name": "question_69402094",
+     "type": "multi_value_single_select",
+     "values": [
+      {
+       "label": "Yes",
+       "value": 1
+      },
+      {
+       "label": "No",
+       "value": 0
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "description": null,
+   "label": "LinkedIn Profile",
+   "required": false,
+   "fields": [
+    {
+     "name": "question_69402095",
+     "type": "input_text",
+     "values": []
+    }
+   ]
+  },
+  {
+   "description": null,
+   "label": "Out of the following four areas, please select your first choice of interest. ",
+   "required": true,
+   "fields": [
+    {
+     "name": "question_69402096",
+     "type": "multi_value_single_select",
+     "values": [
+      {
+       "label": "Frontend Engineer",
+       "value": 753105625
+      },
+      {
+       "label": "Backend Engineer",
+       "value": 753105626
+      },
+      {
+       "label": "Mobile Engineer",
+       "value": 753105627
+      },
+      {
+       "label": "Platform Engineer",
+       "value": 753105628
+      },
+      {
+       "label": "Machine Learning Engineer",
+       "value": 753105629
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "description": null,
+   "label": "Out of the following four areas, please select your second choice of interest. ",
+   "required": true,
+   "fields": [
+    {
+     "name": "question_69402097",
+     "type": "multi_value_single_select",
+     "values": [
+      {
+       "label": "Frontend Engineer",
+       "value": 753105630
+      },
+      {
+       "label": "Backend Engineer",
+       "value": 753105631
+      },
+      {
+       "label": "Mobile Engineer",
+       "value": 753105632
+      },
+      {
+       "label": "Platform Engineer",
+       "value": 753105633
+      },
+      {
+       "label": "Machine Learning Engineer",
+       "value": 753105634
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "description": null,
+   "label": "If Mobile Engineer is your first or second choice, please identify if you are interested in Android or iOS.",
+   "required": false,
+   "fields": [
+    {
+     "name": "question_69402098",
+     "type": "multi_value_single_select",
+     "values": [
+      {
+       "label": "Android",
+       "value": 753105635
+      },
+      {
+       "label": "iOS",
+       "value": 753105636
+      },
+      {
+       "label": "N/A",
+       "value": 753105637
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "description": null,
+   "label": "What is your expected graduation year? ",
+   "required": true,
+   "fields": [
+    {
+     "name": "question_69402099",
+     "type": "multi_value_single_select",
+     "values": [
+      {
+       "label": "2027",
+       "value": 753105638
+      },
+      {
+       "label": "2028",
+       "value": 753105639
+      },
+      {
+       "label": "2029",
+       "value": 753105640
+      },
+      {
+       "label": "2030",
+       "value": 753105641
+      },
+      {
+       "label": "Other",
+       "value": 753105642
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "location_questions": [
+  {
+   "description": null,
+   "label": "Longitude",
+   "required": true,
+   "fields": [
+    {
+     "name": "longitude",
+     "type": "input_hidden",
+     "values": []
+    }
+   ]
+  },
+  {
+   "description": null,
+   "label": "Latitude",
+   "required": true,
+   "fields": [
+    {
+     "name": "latitude",
+     "type": "input_hidden",
+     "values": []
+    }
+   ]
+  },
+  {
+   "description": null,
+   "label": "Location",
+   "required": true,
+   "fields": [
+    {
+     "name": "location",
+     "type": "input_text",
+     "values": []
+    }
+   ]
+  }
+ ]
+}

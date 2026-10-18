@@ -30,7 +30,7 @@ Every task: `ruff check . && pytest` passes, plus its manual check.
 
 ## Phase 3: Real sites (supervised, shadow mode forced on)
 - [x] T11 Jobright collector (moved up): browser profile + `aja login`, Liked + >80% match → final ATS URL → filters. `aja collect --source jobright`; live read 2026-10-17: 92 roles (26 Greenhouse/Lever/Workday pending). Liked page verified live with 3 liked jobs
-- [ ] T7 Greenhouse engine + `aja review` (re-fill under 10s, highlight blockers, save to answer bank)
+- [ ] T7 Greenhouse engine + `aja review` (re-fill under 10s, highlight blockers, save to answer bank). Built 2026-10-17: `aja apply <id>` staged Lyft, Brex, SeatGeek live (drafts only). Left: owner runs `aja review` on one draft; work-auth option mapping (owner decision)
 - [ ] T8 Lever engine
 - [ ] T9a Workday auth (D11): Google first, else Keychain password; `ats_accounts` table; verification wall → STAGED + notify, resend when stale
 - [ ] T9b Workday wizard + native draft: reach Review; gate fail → Save for later

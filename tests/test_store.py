@@ -108,3 +108,44 @@ def test_set_status_without_tier_keeps_the_tier(store):
 def test_list_limit_zero_returns_nothing(store):
     store.upsert_many([make_job()])
     assert store.list(limit=0) == []
+
+
+# --- answer packets (D3) ---
+
+
+def _packet():
+    from auto_job_applier.engines.base import Packet, PageField
+    from auto_job_applier.models import FormField, ResolvedAnswer
+
+    gender = FormField("Gender", "select", required=True, options=["Female", "Male"])
+    why = FormField("Why Acme?", "textarea", required=True)
+    return Packet(
+        fields=[PageField("gender", gender), PageField("question_7", why)],
+        answers=[
+            ResolvedAnswer(gender, "Female", "profile", confident=True),
+            ResolvedAnswer(why, None, "none", confident=False, reason="needs a written answer"),
+        ],
+        blockers=["Why Acme?"],
+    )
+
+
+def test_packet_round_trips(store):
+    store.upsert_many([make_job()])
+    job_id = store.list()[0].id
+    store.save_packet(job_id, _packet())
+    assert store.get_packet(job_id) == _packet()
+
+
+def test_saving_a_packet_again_replaces_it(store):
+    store.upsert_many([make_job()])
+    job_id = store.list()[0].id
+    store.save_packet(job_id, _packet())
+    updated = _packet()
+    updated.blockers = []
+    store.save_packet(job_id, updated)
+    assert store.get_packet(job_id).blockers == []
+
+
+def test_no_packet_for_a_job_never_filled(store):
+    store.upsert_many([make_job()])
+    assert store.get_packet(store.list()[0].id) is None

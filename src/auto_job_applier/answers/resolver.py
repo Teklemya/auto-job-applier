@@ -26,7 +26,7 @@ _BLANK = object()  # a source deliberately answers "leave this empty"
 _WORK_AUTH = re.compile(
     r"sponsor|visa|authori[sz]ed to work|work authori[sz]ation|authori[sz]ation to work"
     r"|eligib\w* (to|for) (work|employment)|legally (permitted|allowed|eligible|able)"
-    r"|citizen|immigration|right to work|\bu ?s person\b|itar|export control|h ?1 ?b"
+    r"|citizen|immigration|right to work|\bu ?s person\b|\bitar\b|export control|h ?1 ?b"
     r"|\bopt\b(?! (in|out))|\bcpt\b|green card|permanent resid"
 )
 _LONG_FORM = re.compile(
@@ -72,7 +72,10 @@ def _profile_value(label: str, p: Profile) -> Value:
         (r"phone|mobile", lambda: c.phone),
         (r"address line 2|apartment|suite", lambda: a.line2 or None),
         (r"address", lambda: a.line1),
-        (r"current location|where are you (currently )?located", lambda: f"{a.city}, {a.state}"),
+        (
+            r"current location|where are you (currently )?located|^location( city)?$",
+            lambda: f"{a.city}, {a.state}",
+        ),
         (r"\bcity\b", lambda: a.city),
         (r"\bstate\b|province", lambda: a.state),
         (r"zip|postal", lambda: a.postal_code),
@@ -86,8 +89,14 @@ def _profile_value(label: str, p: Profile) -> Value:
         (r"graduation year|year of graduation", lambda: edu and edu.graduation[:4]),
         (r"graduat", lambda: edu and edu.graduation),
         (r"\bgpa\b", lambda: edu and edu.gpa),
-        (r"(current|most recent) (company|employer)", lambda: e.current_company),
-        (r"(current|most recent) (job )?title", lambda: e.current_title),
+        # Greenhouse labels its employment section "Employment: Company name" (T7).
+        (
+            r"(current|most recent) (company|employer)|^employment company",
+            lambda: e.current_company,
+        ),
+        (r"(current|most recent) (job )?title|^employment (job )?title", lambda: e.current_title),
+        # The employment section holds only the current job, so its "Current role" box is ticked.
+        (r"^employment current role", lambda: True if e.current_company else None),
         (
             r"^(how many )?(total )?years of (professional |work )?experience( do you have)?$",
             lambda: f"{e.years_experience:g}",
@@ -107,6 +116,8 @@ def _profile_value(label: str, p: Profile) -> Value:
 def _preference_value(label: str, field: FormField, p: Profile) -> Value | object:
     """Preset answers; None = not a preference. Optional salary is deliberately `_BLANK`."""
     pref = p.preferences
+    if label.startswith(("employment ", "education ")):
+        return None  # "Employment: Start date" is a past job's date, not the preferred start
     if re.search(r"start date|when can you start|available to start|earliest start", label):
         return pref.start_date
     if re.search(r"how did you (hear|find|learn)|where did you (hear|find|learn)", label):
@@ -181,12 +192,18 @@ def _unresolved(field: FormField, reason: str, source: str = "none") -> Resolved
 def _from_known_sources(
     f: FormField, label: str, profile: Profile, bank: AnswerBank
 ) -> ResolvedAnswer | None:
-    """profile → preferences → bank (R10): the first answer that fits the field wins."""
+    """profile → preferences → bank (R10): the first answer that fits the field wins.
+
+    A dropdown whose options load only as you type (school, degree) can't be checked against
+    the profile here, so an option the owner picked at review comes first.
+    """
     sources: list[tuple[str, Callable[[], Value | object]]] = [
         ("profile", lambda: _profile_value(label, profile)),
         ("preferences", lambda: _preference_value(label, f, profile)),
         ("bank", lambda: bank.lookup(f.label)),
     ]
+    if f.kind == "select" and not f.options:
+        sources.insert(0, sources.pop())
     for source, get in sources:
         v = get()
         if v is None:

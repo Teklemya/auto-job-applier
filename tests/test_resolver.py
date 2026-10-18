@@ -386,3 +386,71 @@ def test_optional_salary_stays_blank_even_with_a_banked_answer(profile, bank):
     bank.save("Salary expectations", "150000")
     [a] = run([F("Salary expectations", required=False)], profile, bank)
     assert (a.value, a.source, a.confident) == (None, "preferences", True)
+
+
+# --- labels as the Greenhouse engine reads them (T7) ---
+
+
+def test_greenhouse_city_location_gets_city_and_state(profile, bank):
+    [a] = run([F("Location (City)", kind="select")], profile, bank)
+    assert (a.value, a.source) == ("Kansas City, MO", "profile")
+
+
+def test_greenhouse_phone_country_dropdown_gets_the_profile_country(profile, bank):
+    [a] = run([F("Country", kind="select")], profile, bank)
+    assert a.value == "United States"
+
+
+def test_employment_section_company_and_title_come_from_the_current_job(profile, bank):
+    company, title = run([F("Employment: Company name"), F("Employment: Title")], profile, bank)
+    assert (company.value, title.value) == ("Example Corp", "Software Engineer")
+
+
+def test_employment_start_date_is_never_the_preferred_start_date(profile, bank):
+    model = FakeLLM(llm_says((0, "June", False)))
+    [a] = run([F("Employment: Start date month", kind="select")], profile, bank, model)
+    assert a.source != "preferences"
+    assert a.value != "Two weeks after offer"
+
+
+def test_education_section_dropdowns_without_options_get_the_profile_value(profile, bank):
+    school, degree, discipline = run(
+        [
+            F("Education: School", kind="select"),
+            F("Education: Degree", kind="select"),
+            F("Education: Discipline", kind="select"),
+        ],
+        profile,
+        bank,
+    )
+    assert school.value == "Example University"
+    assert degree.value == "Bachelor of Science"
+    assert discipline.value == "Computer Science"
+
+
+def test_military_service_is_not_an_export_control_question(profile, bank):
+    # "itar" (export control) used to match inside "military" and block the field for good.
+    label = "Please enter your relevant employment and military service above."
+    model = FakeLLM(llm_says((0, "Thank you", True)))
+    [a] = run([F(label, kind="select", options=["Thank you"])], profile, bank, model)
+    assert (a.value, a.source) == ("Thank you", "llm")
+
+
+def test_review_answer_beats_the_profile_for_dropdowns_with_unknown_options(profile, bank):
+    # Greenhouse's degree list says "Bachelor's Degree", the profile "Bachelor of Science".
+    # The owner picks the option once at review; that answer must win from then on.
+    bank.save("Education: Degree", "Bachelor's Degree")
+    [a] = run([F("Education: Degree", kind="select")], profile, bank)
+    assert (a.value, a.source) == ("Bachelor's Degree", "bank")
+
+
+def test_profile_still_beats_the_bank_when_the_options_are_known(profile, bank):
+    bank.save("Gender", "Female")
+    options = ["Decline To Self Identify", "Female", "Male"]
+    [a] = run([F("Gender", kind="select", options=options)], profile, bank)
+    assert a.source == "profile"
+
+
+def test_employment_current_role_is_ticked_for_the_profiles_current_job(profile, bank):
+    [a] = run([F("Employment: Current role", kind="checkbox", required=False)], profile, bank)
+    assert (a.value, a.source) == ("Yes", "profile")

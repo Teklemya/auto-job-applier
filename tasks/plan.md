@@ -163,6 +163,13 @@ feed into T3. *Manual:* one live read whose jobs appear in `aja list` with corre
 - `aja review` re-fills a STAGED job in under 10 seconds, highlights the blocking fields, and
   saves new answers to the bank
 - *Manual:* 3 live Greenhouse jobs staged, re-filled and inspected
+- As built: fields come from the rendered page (ids, `<label for>`, `aria-required`; React
+  comboboxes are selects) with options from the public questions API. Employment/education
+  fields carry their section in the label. Filling runs in passes while answers reveal fields
+  (race after Hispanic/Latino) and drops greyed-out ones (end date after "Current role").
+  Unconfident answers stay blank and highlighted, never filled. For dropdowns whose options
+  load as you type, the owner's review answer (bank) beats the profile value. `aja apply`
+  never submits; submitting is T10.
 
 **T8 Lever engine** (S). Same acceptance shape as T7.
 
