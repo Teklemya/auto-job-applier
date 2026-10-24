@@ -43,6 +43,7 @@ education:
     # stage a draft instead.
     degree_also: ["Bachelor's Degree", "Bachelor"]
     major_also: []
+    start: "2020-08"
     graduation: "2024-05"
     gpa: null
 
@@ -58,6 +59,7 @@ demographics:
   hispanic_latino: Decline to self-identify
   veteran_status: Decline to self-identify
   disability_status: Decline to self-identify
+  pronouns: null  # e.g. He/Him
 
 preferences:
   start_date: Two weeks after offer

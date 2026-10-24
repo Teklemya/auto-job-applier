@@ -634,3 +634,37 @@ def test_a_review_answer_is_tried_before_the_profile_choices(profile, bank):
         "bank",
         ["Information Technology"],
     )
+
+
+def test_how_did_you_first_learn_about_us_is_a_preference(profile, bank):
+    [a] = run(
+        [F("How did you first learn about Affirm as an employer?", required=True)], profile, bank
+    )
+    assert (a.value, a.source) == (profile.preferences.heard_about_us, "preferences")
+
+
+def test_pronouns_come_from_the_profile_not_the_gender_answer(profile, bank):
+    profile.demographics.pronouns = "He/Him"
+    field = F("Pronouns", "select", required=True, options=["She/Her", "He/Him", "They/Them"])
+    [a] = run([field], profile, bank)
+    assert (a.value, a.source) == ("He/Him", "profile")
+
+
+def test_no_pronouns_in_the_profile_leaves_the_question_for_review(profile, bank):
+    [a] = run([F("Please share your gender pronouns.", required=False)], profile, bank)
+    assert a.value is None
+
+
+def test_education_dates_come_from_start_and_graduation(profile, bank):
+    profile.education[0].start = "2020-08"
+    profile.education[0].graduation = "2024-05"
+    months = ["January", "May", "August"]
+    fields = [
+        F("Education: Start date month", "select", required=True, options=months),
+        F("Education: Start date year", required=True),
+        F("Education: End date month", "select", required=True),
+        F("Education: End date year", required=True),
+    ]
+    start_month, start_year, end_month, end_year = run(fields, profile, bank)
+    assert (start_month.value, start_year.value, end_year.value) == ("August", "2020", "2024")
+    assert (end_month.value, end_month.alternatives) == ("May", ["05", "5"])

@@ -88,6 +88,11 @@ def _profile_value(label: str, p: Profile) -> Value:
         (r"linkedin", lambda: p.links.linkedin),
         (r"github", lambda: p.links.github),
         (r"website|portfolio|personal site", lambda: p.links.portfolio),
+        # Greenhouse: "Education: Start date month", "Education: End date year".
+        (r"^education start date month", lambda: edu and _month(edu.start)),
+        (r"^education start date year", lambda: edu and edu.start and edu.start[:4]),
+        (r"^education end date month", lambda: edu and _month(edu.graduation)),
+        (r"^education end date year", lambda: edu and edu.graduation[:4]),
         (r"school|university|college|institution", lambda: edu and [edu.school, *edu.school_also]),
         (r"\bdegree\b", lambda: edu and [edu.degree, *edu.degree_also]),
         (
@@ -109,6 +114,7 @@ def _profile_value(label: str, p: Profile) -> Value:
             r"^(how many )?(total )?years of (professional |work )?experience( do you have)?$",
             lambda: f"{e.years_experience:g}",
         ),
+        (r"pronoun", lambda: d.pronouns),  # before "gender": "your gender pronouns"
         (r"hispanic|latin", lambda: d.hispanic_latino),
         (r"\brace\b|ethnicity", lambda: d.race_ethnicity),
         (r"gender", lambda: d.gender),
@@ -121,6 +127,15 @@ def _profile_value(label: str, p: Profile) -> Value:
     return None
 
 
+def _month(yyyy_mm: str | None) -> list[str] | None:
+    """A month as forms spell it, in the order to try: "August", "Aug", "08", "8"."""
+    if not yyyy_mm or len(yyyy_mm) < 7:
+        return None
+    m = int(yyyy_mm[5:7])
+    name = date(2000, m, 1).strftime("%B")
+    return list(dict.fromkeys([name, name[:3], f"{m:02d}", str(m)]))
+
+
 def _preference_value(label: str, field: FormField, p: Profile) -> Value | object:
     """Preset answers; None = not a preference. Optional salary is deliberately `_BLANK`."""
     pref = p.preferences
@@ -128,7 +143,10 @@ def _preference_value(label: str, field: FormField, p: Profile) -> Value | objec
         return None  # "Employment: Start date" is a past job's date, not the preferred start
     if re.search(r"start date|when can you start|available to start|earliest start", label):
         return pref.start_date
-    if re.search(r"how did you (hear|find|learn)|where did you (hear|find|learn)", label):
+    if re.search(
+        r"(how|where) did you (first )?(hear|find|learn|come across)|how you (heard|found|learned)",
+        label,
+    ):
         return pref.heard_about_us
     if re.search(r"relocat", label):
         return pref.willing_to_relocate

@@ -67,6 +67,7 @@ class Education(_Strict):
     school_also: list[str] = []
     degree_also: list[str] = []
     major_also: list[str] = []
+    start: str | None = None  # "YYYY-MM", for forms that ask when you started
     graduation: str  # "YYYY-MM"
     gpa: str | None = None
 
@@ -85,6 +86,7 @@ class Demographics(_Strict):
     hispanic_latino: str = DECLINE
     veteran_status: str = DECLINE
     disability_status: str = DECLINE
+    pronouns: str | None = None  # e.g. "He/Him"; left empty, a required question goes to review
 
 
 class Preferences(_Strict):
