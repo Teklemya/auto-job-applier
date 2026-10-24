@@ -284,17 +284,29 @@ def _submits_left(profile: Profile, store: JobStore) -> int:
     return max(0, profile.settings.daily_submit_cap - used)
 
 
-def _apply_one(store: JobStore, profile: Profile, model: LLM, job: Job) -> Packet:
+CODE_WAIT_MS = 5 * 60_000  # time to type an emailed security code at `aja apply`
+
+
+def _apply_one(
+    store: JobStore,
+    profile: Profile,
+    model: LLM,
+    job: Job,
+    retry: bool = False,
+    watched: bool = False,
+) -> Packet:
     """Fill one Greenhouse job; submit it if live mode and the cap allow, else stage a draft.
-    A draft made after a click on Submit (a security code, a rejected page) may already be
-    on its way, so it is only ever re-filled, never submitted again."""
+    A job whose Submit was clicked before (a security code, a rejected page) may already be
+    on its way, so it is only re-filled, unless the owner checked and passes `retry`.
+    When `watched` (the owner ran it by hand), the page waits for an emailed security code."""
     assert job.id is not None
-    clicked_before = (job.reason or "").startswith(CLICKED)
+    clicked_before = (job.reason or "").startswith(CLICKED) and not retry
     jd = store.get_description(job.id)
     if jd is None:
         jd = fetch_description(job)
         store.save_description(job.id, jd)
     with _greenhouse_session(job) as session:
+        session.code_wait_ms = CODE_WAIT_MS if watched else 0
         return stage(
             job,
             session,
@@ -309,7 +321,16 @@ def _apply_one(store: JobStore, profile: Profile, model: LLM, job: Job) -> Packe
 
 
 @app.command("apply")
-def apply_job(job_id: int) -> None:
+def apply_job(
+    job_id: int,
+    retry: Annotated[
+        bool,
+        typer.Option(
+            "--retry",
+            help="Submit again after a click that did not go through (check your email first).",
+        ),
+    ] = False,
+) -> None:
     """Fill a Greenhouse application. It is submitted only in live mode, within the daily cap,
     when nothing blocks it; otherwise it is saved as a draft."""
     store = _store()
@@ -323,7 +344,7 @@ def apply_job(job_id: int) -> None:
                 f"#{job_id} is on {job.ats}; only Greenhouse can be filled so far.", err=True
             )
             raise typer.Exit(1)
-        if job.status not in _FILLABLE:
+        if job.status not in _FILLABLE and not (retry and job.status is Status.FAILED):
             # APPLIED was sent; SKIPPED failed a filter or is a duplicate; NEW is unscreened.
             why = f": {job.reason}" if job.reason else ""
             typer.echo(
@@ -331,7 +352,13 @@ def apply_job(job_id: int) -> None:
             )
             raise typer.Exit(1)
         profile = load_profile(paths.profile_path())
-        packet = _apply_one(store, profile, make_llm(profile, store, "answers"), job)
+        if profile.settings.submit:
+            typer.echo(
+                "If the form asks for an emailed security code, type it in the browser "
+                "(the page waits up to 5 minutes)."
+            )
+        model = make_llm(profile, store, "answers")
+        packet = _apply_one(store, profile, model, job, retry=retry, watched=True)
         job = store.get(job_id)
     except (ProfileError, LLMError, FetchError, PostingClosed, Unsupported) as e:
         typer.echo(str(e), err=True)

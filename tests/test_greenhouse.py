@@ -199,7 +199,7 @@ def test_submit_outcome_reads_the_confirmation_page():
 
 def test_submit_outcome_stages_a_security_code_or_page_errors():
     form = "https://job-boards.greenhouse.io/lyft/jobs/1"
-    code = greenhouse.submit_outcome(form, "We sent a security code to j@x.com", [], True)
+    code = greenhouse.submit_outcome(form, "Enter the code", [], True, code_asked=True)
     assert not code.confirmed and "security code" in code.problems[0]
     rejected = greenhouse.submit_outcome(form, "Apply", ["Phone is invalid"], True)
     assert rejected.problems == ["page rejected the submit: Phone is invalid"]
@@ -212,3 +212,11 @@ def test_submit_outcome_waits_while_the_page_shows_nothing_new():
 def test_thank_you_text_in_the_job_description_is_not_a_confirmation():
     jd = "Once your application has been submitted, our team will reach out."
     assert greenhouse.submit_outcome("https://x/jobs/1", jd, [], form_showing=True) is None
+
+
+def test_greenhouses_verification_code_page_is_recognized():
+    text = (
+        "A verification code was sent to j@x.com. To submit your application, enter the "
+        "8-character code to confirm you're a human. Security code"
+    )
+    assert greenhouse._SECURITY_CODE.search(text)

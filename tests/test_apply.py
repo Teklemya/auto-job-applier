@@ -550,3 +550,21 @@ def test_unconfirmed_clicks_count_toward_the_daily_cap(
     ready_greenhouse(monkeypatch, sessions)
     runner.invoke(cli.app, ["apply", str(second)])
     assert sessions[0].submitted == 0
+
+
+def test_retry_submits_a_click_that_did_not_go_through_and_waits_for_a_code(
+    home_with_profile, example_profile_data, monkeypatch
+):
+    live(home_with_profile, example_profile_data, cap=2)
+    job_id = queue(home_with_profile, LYFT, Status.FAILED, apply.UNCONFIRMED)
+    sessions = []
+    ready_greenhouse(monkeypatch, sessions)
+
+    refused = runner.invoke(cli.app, ["apply", str(job_id)])
+    assert refused.exit_code == 1 and sessions == []
+
+    result = runner.invoke(cli.app, ["apply", str(job_id), "--retry"])
+    assert result.exit_code == 0, result.output
+    assert sessions[0].submitted == 1
+    assert sessions[0].code_wait_ms == cli.CODE_WAIT_MS
+    assert "APPLIED" in result.output

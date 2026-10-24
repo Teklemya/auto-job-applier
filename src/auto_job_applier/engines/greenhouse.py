@@ -181,8 +181,11 @@ def fetch_questions(job: Job, get: Callable[[str], dict] = get_json) -> dict:
     return get(api_url(job) + "?questions=true")
 
 
+CODE_ASKED = "email security code: the application is not sent until it is entered"
+
+
 def submit_outcome(
-    url: str, body_text: str, errors: list[str], form_showing: bool
+    url: str, body_text: str, errors: list[str], form_showing: bool, code_asked: bool = False
 ) -> SubmitResult | None:
     """What the page shows after Submit, or None while it is still deciding.
 
@@ -190,12 +193,12 @@ def submit_outcome(
     description above the form can say "after your application is submitted", so thank-you
     text counts only once the form is gone. Some boards email a security code first: the
     application isn't sent until it is entered, so that is a draft for the owner, as are
-    validation errors. `errors` holds only errors that appeared after the click.
+    validation errors. `errors` and `code_asked` only count what appeared after the click.
     """
     if "/confirmation" in url or (not form_showing and _CONFIRMED.search(body_text)):
         return SubmitResult(confirmed=True)
-    if _SECURITY_CODE.search(body_text):
-        return SubmitResult(False, ["email security code: enter it at review"])
+    if code_asked:
+        return SubmitResult(False, [CODE_ASKED])
     if errors:
         return SubmitResult(False, [f"page rejected the submit: {e}" for e in errors])
     return None
@@ -212,7 +215,8 @@ _CONFIRMED = re.compile(
     r"|we(.ve| have) received your application",
     re.I,
 )
-_SECURITY_CODE = re.compile(r"(enter|sent).{0,40}(security|verification) code", re.I)
+# "A verification code was sent to you@x.com. ... enter the 8-character code" + "Security code"
+_SECURITY_CODE = re.compile(r"(security|verification) code|enter the \d+.character code", re.I)
 SUBMIT_WAIT_MS = 30_000
 
 
@@ -223,6 +227,8 @@ class GreenhouseSession:
         self.page, self.api = page, api
         self.picked: dict[str, str] = {}  # dom id → the option chosen in a type-to-search box
         self.offered: dict[str, list[str]] = {}  # dom id → options seen there while typing
+        # How long to wait for the owner to type an emailed security code; 0 = unattended.
+        self.code_wait_ms = 0
 
     @classmethod
     def open(cls, page, job: Job, api: dict | None) -> "GreenhouseSession":
@@ -308,16 +314,30 @@ class GreenhouseSession:
         return [t.strip() for t in self.page.locator(_ERRORS).all_inner_texts() if t.strip()]
 
     def submit(self) -> SubmitResult:
+        """Click Submit and watch the page. When an emailed security code is asked for and
+        `code_wait_ms` is set, keep the page open that long for the owner to type it."""
         before = set(self._errors())  # banners and notices already on the page aren't errors
+        code_before = bool(_SECURITY_CODE.search(self.page.inner_text("body")))
         self.page.locator(SUBMIT_BUTTON).last.click()
-        for _ in range(SUBMIT_WAIT_MS // 500):
+        ticks, waiting_for_code = SUBMIT_WAIT_MS // 500, False
+        while ticks > 0:
+            ticks -= 1
             self.page.wait_for_timeout(500)
             with contextlib.suppress(Exception):  # the page is navigating
                 new = [e for e in self._errors() if e not in before]
                 showing = self.page.locator(FORM_READY).count() > 0
-                outcome = submit_outcome(self.page.url, self.page.inner_text("body"), new, showing)
-                if outcome is not None:
-                    return outcome
+                body = self.page.inner_text("body")
+                code = not code_before and bool(_SECURITY_CODE.search(body))
+                outcome = submit_outcome(self.page.url, body, new, showing, code)
+                if outcome is None:
+                    continue
+                if outcome.problems == [CODE_ASKED] and self.code_wait_ms:
+                    if not waiting_for_code:
+                        waiting_for_code, ticks = True, self.code_wait_ms // 500
+                    continue
+                return outcome
+        if waiting_for_code:
+            return SubmitResult(False, [CODE_ASKED])
         if self.page_blockers():  # a challenge after the click: nothing was sent yet
             return SubmitResult(False, ["CAPTCHA after Submit: solve it at review"])
         return SubmitResult(confirmed=False)
