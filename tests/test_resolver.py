@@ -674,3 +674,45 @@ def test_education_dates_come_from_start_and_graduation(profile, bank):
     start_month, start_year, end_month, end_year = run(fields, profile, bank)
     assert (start_month.value, start_year.value, end_year.value) == ("August", "2020", "2024")
     assert (end_month.value, end_month.alternatives) == ("May", ["05", "5"])
+
+
+AFFIRM_STYLE = [
+    "I have not previously been employed at Acme",
+    "I have been employed at Acme as a full-time employee",
+    "I have been employed at Acme as a contractor or intern",
+]
+
+
+def test_worked_here_before_picks_the_negated_sentence_option(profile, bank):
+    q = F(
+        "Have you previously been employed at Acme for any length of time?",
+        "select",
+        options=AFFIRM_STYLE,
+    )
+    [a] = run([q], profile, bank)
+    assert (a.value, a.source) == ("I have not previously been employed at Acme", "profile")
+
+
+def test_worked_for_us_before_is_no_on_a_yes_no_question(profile, bank):
+    [a] = run([F("Have you ever worked for us before?", "select", options=YES_NO)], profile, bank)
+    assert a.value == "No"
+
+
+def test_a_past_employer_answers_yes(profile, bank):
+    profile.experience.past_employers = ["ACME"]
+    q = F("Have you ever been employed by Acme?", "select", options=YES_NO)
+    [a] = run([q], profile, bank)
+    assert a.value == "Yes"
+
+
+def test_several_yes_options_are_left_for_review(profile, bank):
+    profile.experience.past_employers = ["Acme"]
+    q = F("Have you previously been employed at Acme?", "select", options=AFFIRM_STYLE)
+    [a] = run([q], profile, bank, model=FakeLLM(llm_says((0, "x", False))))
+    assert not a.confident
+
+
+def test_worked_elsewhere_questions_are_not_about_this_company(profile, bank):
+    q = F("Have you previously worked in a startup?", "select", options=YES_NO)
+    [a] = run([q], profile, bank, model=FakeLLM(llm_says((0, "Yes", True))))
+    assert a.source == "llm"

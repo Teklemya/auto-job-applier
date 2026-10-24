@@ -37,6 +37,10 @@ _OPEN_ENDED = re.compile(
 _LONG_FORM = re.compile(
     r"cover letter|\bwhy\b|what interests you|interested in (this|our|working)|motivat"
 )
+_WORKED_HERE = re.compile(
+    r"(previously|ever|formerly|before|in the past)\b.*\b(employed|worked|work)\b"
+    r"|\b(employed|worked)\b.*\b(before|previously|in the past)\b|former employee"
+)
 _NEGATIONS = {"no", "not", "non", "never", "don", "dont", "doesn", "isn", "aren", "won"}
 _DECLINE_OPTION = re.compile(
     r"decline|not wish|don ?t wish|prefer not|choose not|not to (say|answer)"
@@ -125,6 +129,28 @@ def _profile_value(label: str, p: Profile) -> Value:
         if re.search(pattern, label):
             return get()
     return None
+
+
+def _names_employer(label: str, job: Job) -> bool:
+    """The question is about this company: it names it, or says "us"."""
+    company = normalize(job.company)
+    return bool(company and company in label) or bool(
+        re.search(r"\b(us|our (company|organization|team)|this company)\b", label)
+    )
+
+
+def _by_polarity(options: list[str], yes: bool) -> str | None:
+    """For sentence options ("I have not previously been employed at Affirm"): "no" is the
+    one negated option. "Yes" often has several ("as a full-time employee", "as an intern"),
+    so it is picked only when there is exactly one."""
+    hits = [o for o in options if normalize(o) and _negated(o) != yes]
+    return hits[0] if len(hits) == 1 else None
+
+
+def _worked_at(job: Job, p: Profile) -> bool:
+    e = p.experience
+    worked = [normalize(c) for c in [*e.past_employers, e.current_company or ""] if c]
+    return normalize(job.company) in worked
 
 
 def _month(yyyy_mm: str | None) -> list[str] | None:
@@ -349,6 +375,14 @@ def resolve(
                 )
             results[i] = ans
             continue
+        if _WORKED_HERE.search(label) and _names_employer(label, job):
+            worked = _worked_at(job, profile)
+            ans = _answer(f, worked, "profile")
+            if ans.value is None and (option := _by_polarity(f.options, worked)):
+                ans = _answer(f, option, "profile", "the option that says so")
+            if ans.confident and ans.value is not None:
+                results[i] = ans
+                continue
         if f.kind == "file":
             if re.search(r"resume|\bcv\b", label):
                 results[i] = _answer(f, str(profile.resume_path), "profile")

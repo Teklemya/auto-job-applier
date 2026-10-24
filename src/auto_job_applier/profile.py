@@ -108,6 +108,8 @@ class Experience(_Strict):
     current_company: str | None = None
     current_title: str | None = None
     years_experience: float = 0
+    # Companies you have worked for before, for "have you previously worked at X?" questions.
+    past_employers: list[str] = []
 
 
 class Demographics(_Strict):
