@@ -4,11 +4,19 @@ Every model forbids unknown keys so a typo in profile.yaml fails loudly instead 
 falling back to a default (a misspelled sponsorship key must never become a wrong answer).
 """
 
+import re
 from pathlib import Path
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import (
+    AliasChoices,
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+)
 
 from . import paths
 
@@ -57,6 +65,24 @@ class WorkAuthorization(_Strict):
     explanation: str | None = None
 
 
+_DATE_FORMATS = [
+    (re.compile(r"^(\d{4})[-/](\d{1,2})(?:[-/]\d{1,2})?$"), lambda m: (m[1], m[2])),  # 2022-08(-21)
+    (re.compile(r"^(\d{1,2})[-/]\d{1,2}[-/](\d{4})$"), lambda m: (m[2], m[1])),  # 08-21-2022
+    (re.compile(r"^(\d{1,2})[-/](\d{4})$"), lambda m: (m[2], m[1])),  # 08/2022
+    (re.compile(r"^(\d{1,2})[-/](\d{2})$"), lambda m: ("20" + m[2], m[1])),  # 08-22
+]
+
+
+def to_year_month(text: str) -> str:
+    """A date in any common order, as "YYYY-MM"."""
+    for pattern, parts in _DATE_FORMATS:
+        if m := pattern.match(text.strip()):
+            year, month = parts(m)
+            if 1 <= int(month) <= 12:
+                return f"{year}-{int(month):02d}"
+    raise ValueError(f"{text!r} is not a date like 2022-08, 2022-08-21 or 08/2022")
+
+
 class Education(_Strict):
     school: str
     degree: str  # e.g. "Bachelor of Science"
@@ -67,9 +93,15 @@ class Education(_Strict):
     school_also: list[str] = []
     degree_also: list[str] = []
     major_also: list[str] = []
-    start: str | None = None  # "YYYY-MM", for forms that ask when you started
-    graduation: str  # "YYYY-MM"
+    # Dates are stored as "YYYY-MM"; "2022-08-21", "08/2022", "08-21-2022" and "08-22" work too.
+    start: str | None = Field(None, validation_alias=AliasChoices("start", "start_date"))
+    graduation: str = Field(validation_alias=AliasChoices("graduation", "end_date"))
     gpa: str | None = None
+
+    @field_validator("start", "graduation", mode="before")
+    @classmethod
+    def _year_month(cls, v: object) -> object:
+        return None if v is None else to_year_month(str(v))
 
 
 class Experience(_Strict):
