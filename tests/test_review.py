@@ -246,3 +246,18 @@ def test_an_owner_can_answer_with_the_option_number(store):
 def test_an_option_number_out_of_range_is_not_an_answer(store):
     with pytest.raises(ValueError):
         review.apply_answers(draft(), {"question_7": "3"}, AnswerBank(store))
+
+
+def test_a_search_box_takes_a_listed_option_by_number_or_any_text(store):
+    seen = ["Computer Engineering", "Information Systems"]
+    major = FormField("Education: Discipline", "select", True, seen, typeahead=True)
+    packet = Packet(
+        [PageField("discipline--0", major)],
+        [ResolvedAnswer(major, "Information Technology", "profile", True)],
+        ["could not fill: Education: Discipline"],
+    )
+    bank = AnswerBank(store)
+    by_number = review.apply_answers(packet, {"discipline--0": "2"}, bank)
+    assert by_number.answers[0].value == "Information Systems"
+    typed = review.apply_answers(packet, {"discipline--0": "Computer Science"}, bank)
+    assert (typed.answers[0].value, typed.blockers) == ("Computer Science", [])

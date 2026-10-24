@@ -61,6 +61,12 @@ class Education(_Strict):
     school: str
     degree: str  # e.g. "Bachelor of Science"
     major: str
+    # Other spellings or close choices, tried in order when a form's dropdown doesn't offer
+    # the value above, e.g. degree_also: ["Bachelor's Degree", "Bachelor"]. The LLM only ever
+    # sees the values above.
+    school_also: list[str] = []
+    degree_also: list[str] = []
+    major_also: list[str] = []
     graduation: str  # "YYYY-MM"
     gpa: str | None = None
 

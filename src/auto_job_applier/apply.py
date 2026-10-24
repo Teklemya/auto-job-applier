@@ -4,6 +4,8 @@ Engines read the page; this module answers it. The packet is stored with every d
 `aja review` can re-fill the form without the LLM (D3).
 """
 
+import contextlib
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from typing import Protocol
@@ -18,8 +20,11 @@ from .store import JobStore
 
 NO_FORM = "no application form found on the page"
 SHADOW_READY = "shadow mode: every required field answered, not submitted"
-AUTO_SUBMITTED = "submitted automatically, confirmation page seen"
-UNCONFIRMED = "clicked Submit but saw no confirmation page: check your email before applying again"
+# Every outcome after a click on Submit starts with CLICKED: the daily cap counts them all, and
+# a draft made after a click is never submitted again automatically.
+CLICKED = "submit clicked: "
+AUTO_SUBMITTED = CLICKED + "confirmation page seen"
+UNCONFIRMED = CLICKED + "no confirmation page; check your email before applying again"
 MAX_PASSES = 3  # fill rounds while answers keep revealing new fields
 
 
@@ -37,6 +42,10 @@ class FormSession(Protocol):
         ...
 
     def screenshot(self, path: Path) -> None: ...
+
+    # Type-to-search dropdowns: the option each box got, and the options seen while typing.
+    picked: dict[str, str]
+    offered: dict[str, list[str]]
 
     def submit(self) -> SubmitResult:
         """Click Submit and wait for the confirmation page, an error, or nothing."""
@@ -101,7 +110,7 @@ def stage(
         on_page = session.fields()
     showing = {pf.dom_id for pf in on_page}
     kept = [(pf, a) for pf, a in zip(fields, answers, strict=True) if pf.dom_id in showing]
-    packet = Packet([pf for pf, _ in kept], [a for _, a in kept], [])
+    packet = Packet(*_with_typeahead(kept, session), [])
     packet.blockers = gate(packet.answers) if packet.fields else [NO_FORM]
     packet.blockers += [
         f"could not fill: {pf.field.label}"
@@ -115,17 +124,41 @@ def stage(
     if packet.blockers or not submit:
         store.set_status(job.id, Status.STAGED, _draft_reason(packet))
         return packet
-    result = session.submit()
-    session.screenshot(shots_dir / f"{job.id}-{datetime.now():%Y%m%d-%H%M%S}-submit.png")
+    try:
+        result = session.submit()
+    except Exception as e:  # the click may have gone through: never retried automatically
+        store.set_status(job.id, Status.FAILED, f"{UNCONFIRMED} (browser error: {e})"[:300])
+        return packet
+    # The status is written before anything else can fail, so a sent job is never re-queued.
     if result.confirmed:
         store.set_status(job.id, Status.APPLIED, AUTO_SUBMITTED)
     elif result.problems:
         packet.blockers = result.problems
         store.save_packet(job.id, packet)
-        store.set_status(job.id, Status.STAGED, _draft_reason(packet))
+        store.set_status(job.id, Status.STAGED, CLICKED + _draft_reason(packet))
     else:
         store.set_status(job.id, Status.FAILED, UNCONFIRMED)
+    with contextlib.suppress(Exception):
+        session.screenshot(shots_dir / f"{job.id}-{datetime.now():%Y%m%d-%H%M%S}-submit.png")
     return packet
+
+
+def _with_typeahead(
+    kept: list[tuple[PageField, ResolvedAnswer]], session: FormSession
+) -> tuple[list[PageField], list[ResolvedAnswer]]:
+    """Record what the type-to-search boxes did: the option picked becomes the answer, and the
+    options seen go on the field, so `aja review` can number them when none fit."""
+    fields, answers = [], []
+    for pf, a in kept:
+        seen = session.picked.get(pf.dom_id), session.offered.get(pf.dom_id)
+        if seen[1] and not pf.field.options:
+            pf = PageField(pf.dom_id, replace(pf.field, options=seen[1], typeahead=True))
+            a = replace(a, field=pf.field)
+        if seen[0]:
+            a = replace(a, value=seen[0], alternatives=[], reason="picked on the page")
+        fields.append(pf)
+        answers.append(a)
+    return fields, answers
 
 
 def _draft_reason(packet: Packet) -> str:

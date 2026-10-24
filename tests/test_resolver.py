@@ -355,6 +355,7 @@ def test_optional_fields_never_reach_the_llm(profile, bank):
 
 
 def test_profile_value_that_fits_no_option_falls_through(profile, bank):
+    profile.education[0].degree_also = []
     bank.save("Highest degree", "Bachelor's")
     field = F("Highest degree", "select", options=["High school", "Bachelor's", "Master's"])
     [a] = run([field], profile, bank)  # profile says "Bachelor of Science": no option fits
@@ -594,3 +595,42 @@ def test_a_non_hyphen_prefix_is_not_a_negation():
     )
     assert resolver.match_option("F-1 OPT", field) == SEATGEEK_AUTH[1]
     assert resolver.match_option("Yes", field) is None
+
+
+def test_degree_spellings_count_as_the_same_option(profile, bank):
+    profile.education[0].degree_also = []
+    field = F("Degree", "select", options=["High School", "Bachelor's Degree", "Master's Degree"])
+    profile.education[0].degree = "Bachelors"
+    [a] = run([field], profile, bank)
+    assert (a.value, a.source) == ("Bachelor's Degree", "profile")
+
+
+def test_the_first_listed_choice_the_form_offers_wins(profile, bank):
+    profile.education[0].major = "Information Technology"
+    profile.education[0].major_also = ["Computer Information Systems", "Computer Science"]
+    field = F("Discipline", "select", options=["Computer Science", "Computer Information Systems"])
+    [a] = run([field], profile, bank)
+    assert a.value == "Computer Information Systems"
+
+
+def test_a_type_to_search_dropdown_gets_every_choice_to_try_in_order(profile, bank):
+    profile.education[0].major = "Information Technology"
+    profile.education[0].major_also = ["Computer Science"]
+    [a] = run([F("Education: Discipline", "select", required=True)], profile, bank)
+    assert (a.value, a.alternatives, a.confident) == (
+        "Information Technology",
+        ["Computer Science"],
+        True,
+    )
+
+
+def test_a_review_answer_is_tried_before_the_profile_choices(profile, bank):
+    profile.education[0].major = "Information Technology"
+    profile.education[0].major_also = ["Computer Science"]
+    bank.save("Education: Discipline", "Computer Science")
+    [a] = run([F("Education: Discipline", "select", required=True)], profile, bank)
+    assert (a.value, a.source, a.alternatives) == (
+        "Computer Science",
+        "bank",
+        ["Information Technology"],
+    )

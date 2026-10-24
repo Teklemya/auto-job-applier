@@ -114,6 +114,8 @@ class FakeSession:
         self._fields = fields
         self.submits = submits  # the SubmitResult a click on Submit gives
         self.submitted = 0
+        self.picked = {}
+        self.offered = {}
         self.cant_fill = set(cant_fill)
         self._page_blockers = list(page_blockers)
         self.reveals = reveals or {}
@@ -283,7 +285,7 @@ def home_with_profile(aja_home, example_profile_data):
 def queue(home, job, status=Status.PENDING, reason=None):
     s = JobStore(home / "jobs.db")
     s.upsert_many([job])
-    job_id = s.list()[0].id
+    job_id = next(j.id for j in s.list() if j.url == job.url)
     s.set_status(job_id, status, reason)
     s.save_description(job_id, "Build rides.")
     s.close()
@@ -459,7 +461,7 @@ def test_run_collects_screens_and_drafts_the_best_greenhouse_jobs(home_with_prof
     assert "greenhouse" in result.output
 
 
-def test_run_marks_a_job_failed_when_the_browser_breaks(home_with_profile, monkeypatch):
+def test_a_browser_error_before_submit_leaves_the_job_queued(home_with_profile, monkeypatch):
     @contextmanager
     def broken(job):
         raise RuntimeError("Target page, context or browser has been closed")
@@ -473,8 +475,78 @@ def test_run_marks_a_job_failed_when_the_browser_breaks(home_with_profile, monke
     result = runner.invoke(cli.app, ["run", "--file", readme, "--limit", "1"])
 
     assert result.exit_code == 0, result.output
-    assert "1 failed" in result.output
+    assert "1 retried next run" in result.output
     s = JobStore(home_with_profile / "jobs.db")
-    [failed] = s.list(status=Status.FAILED)
-    assert "engine error" in failed.reason
+    assert s.list(status=Status.FAILED) == []
+    assert len(s.apply_queue(ATS.GREENHOUSE)) == 2
     s.close()
+
+
+# --- robustness: type-to-search boxes, clicks that may have been sent -------------------------
+
+
+def test_the_option_a_search_box_picked_becomes_the_answer(profile, store, tmp_path):
+    degree = PageField("degree--0", FormField("Education: Degree", "select", required=True))
+    session = FakeSession([degree])
+    session.picked = {"degree--0": "Bachelor's Degree"}
+    job = staged(profile, store, tmp_path, session)
+    [answer] = store.get_packet(job.id).answers
+    assert (answer.value, answer.confident) == ("Bachelor's Degree", True)
+
+
+def test_options_seen_in_a_search_box_are_kept_for_review(profile, store, tmp_path):
+    major = PageField("discipline--0", FormField("Education: Discipline", "select", True))
+    session = FakeSession([major], cant_fill={"discipline--0"})
+    session.offered = {"discipline--0": ["Computer Engineering", "Information Systems"]}
+    job = staged(profile, store, tmp_path, session)
+    packet = store.get_packet(job.id)
+    assert packet.fields[0].field.options == ["Computer Engineering", "Information Systems"]
+    assert packet.fields[0].field.typeahead
+    assert "could not fill: Education: Discipline" in packet.blockers
+
+
+class Boom(FakeSession):
+    def submit(self):
+        raise RuntimeError("navigation interrupted")
+
+
+def test_a_browser_error_during_submit_fails_the_job_so_it_is_never_resent(
+    profile, store, tmp_path
+):
+    job = staged(profile, store, tmp_path, Boom(first_name_only()), submit=True)
+    assert job.status is Status.FAILED
+    assert job.reason.startswith(apply.CLICKED)
+
+
+def test_a_draft_made_after_a_submit_click_is_never_submitted_again(
+    home_with_profile, example_profile_data, monkeypatch
+):
+    live(home_with_profile, example_profile_data)
+    reason = apply.CLICKED + "needs review: 1 blocking"
+    job_id = queue(home_with_profile, LYFT, Status.STAGED, reason)
+    sessions = []
+    ready_greenhouse(monkeypatch, sessions)
+    result = runner.invoke(cli.app, ["apply", str(job_id)])
+    assert result.exit_code == 0, result.output
+    assert sessions[0].submitted == 0
+
+
+def test_unconfirmed_clicks_count_toward_the_daily_cap(
+    home_with_profile, example_profile_data, monkeypatch
+):
+    live(home_with_profile, example_profile_data, cap=1)
+    first = queue(home_with_profile, LYFT)
+    s = JobStore(home_with_profile / "jobs.db")
+    s.set_status(first, Status.FAILED, apply.UNCONFIRMED)
+    s.close()
+    brex = Job(
+        url="https://job-boards.greenhouse.io/brex/jobs/1",
+        company="Brex",
+        role="SWE",
+        ats=ATS.GREENHOUSE,
+    )
+    second = queue(home_with_profile, brex)
+    sessions = []
+    ready_greenhouse(monkeypatch, sessions)
+    runner.invoke(cli.app, ["apply", str(second)])
+    assert sessions[0].submitted == 0

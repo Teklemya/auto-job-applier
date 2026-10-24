@@ -15,7 +15,7 @@ from . import browser, paths, review
 from .answers.bank import AnswerBank
 from .answers.resolver import is_work_auth
 from .answers.writer import make_writer
-from .apply import AUTO_SUBMITTED, stage
+from .apply import CLICKED, stage
 from .engines import greenhouse
 from .engines.base import Packet, fill_plan
 from .fit import FitRun, screen_fit
@@ -131,6 +131,11 @@ def _gather(fetch: Callable[[], list[Job]], keep_going: bool) -> list[Job] | Non
     except typer.Exit:
         if not keep_going:
             raise
+        return None
+    except Exception as e:  # e.g. a browser that won't start: one source, not the whole run
+        if not keep_going:
+            raise
+        typer.echo(f"Skipped a source: {e}", err=True)
         return None
 
 
@@ -271,16 +276,20 @@ def _today_start() -> str:
 
 
 def _submits_left(profile: Profile, store: JobStore) -> int:
-    """0 in shadow mode (S1); otherwise what today's cap (S2) still allows."""
+    """0 in shadow mode (S1); otherwise what today's cap (S2) still allows. Every click on
+    Submit counts, confirmed or not, since an unconfirmed one may still have been sent."""
     if not profile.settings.submit:
         return 0
-    used = store.count_events(Status.APPLIED, AUTO_SUBMITTED, _today_start())
+    used = store.count_events(CLICKED, _today_start())
     return max(0, profile.settings.daily_submit_cap - used)
 
 
 def _apply_one(store: JobStore, profile: Profile, model: LLM, job: Job) -> Packet:
-    """Fill one Greenhouse job; submit it if live mode and the cap allow, else stage a draft."""
+    """Fill one Greenhouse job; submit it if live mode and the cap allow, else stage a draft.
+    A draft made after a click on Submit (a security code, a rejected page) may already be
+    on its way, so it is only ever re-filled, never submitted again."""
     assert job.id is not None
+    clicked_before = (job.reason or "").startswith(CLICKED)
     jd = store.get_description(job.id)
     if jd is None:
         jd = fetch_description(job)
@@ -295,7 +304,7 @@ def _apply_one(store: JobStore, profile: Profile, model: LLM, job: Job) -> Packe
             jd=jd,
             shots_dir=paths.artifacts_dir(),
             writer=make_writer(profile, model),
-            submit=_submits_left(profile, store) > 0,
+            submit=not clicked_before and _submits_left(profile, store) > 0,
         )
 
 
@@ -376,8 +385,10 @@ def run(
                 typer.echo(f"#{job.id} {job.company}: no description ({e}); retried next run")
                 outcomes["waiting"] += 1
                 continue
-            except Exception as e:  # a browser error: FAILED, never retried blindly
-                store.set_status(job.id, Status.FAILED, f"engine error: {e}"[:300])
+            except Exception as e:  # before any Submit click (stage records those): retry later
+                typer.echo(f"#{job.id} {job.company}: {e}; stays queued for the next run")
+                outcomes["errors"] += 1
+                continue
             done = store.get(job.id)
             outcomes[done.status.value] += 1
             typer.echo(f"#{job.id} {done.company}: {done.role} → {done.status} ({done.reason})")
@@ -390,7 +401,8 @@ def _run_summary(store: JobStore, profile: Profile, outcomes: Counter[str], sinc
     mode = "live" if profile.settings.submit else "shadow mode"
     typer.echo(
         f"\nRun ({mode}): {outcomes[Status.APPLIED]} submitted, {outcomes[Status.STAGED]} drafts, "
-        f"{outcomes[Status.FAILED]} failed, {outcomes[Status.SKIPPED]} closed"
+        f"{outcomes[Status.FAILED]} failed, {outcomes[Status.SKIPPED]} closed, "
+        f"{outcomes['errors'] + outcomes['waiting']} retried next run"
     )
     new = store.new_since(since)
     supply = ", ".join(f"{ats} {n}" for ats, n in sorted(new.items(), key=lambda kv: -kv[1]))

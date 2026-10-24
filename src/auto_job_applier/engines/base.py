@@ -21,6 +21,7 @@ class Action:
     kind: str  # type | choose | upload | paste | check
     dom_id: str
     value: str
+    alternatives: tuple[str, ...] = ()  # choose: more values to try when `value` isn't offered
 
 
 _KIND_ACTION = {"text": "type", "textarea": "type", "select": "choose"}
@@ -43,7 +44,8 @@ def fill_plan(fields: list[PageField], answers: list[ResolvedAnswer]) -> list[Ac
             action = "upload" if Path(a.value).is_file() else "paste"
             plan.append(Action(action, pf.dom_id, a.value))
         else:
-            plan.append(Action(_KIND_ACTION.get(kind, "type"), pf.dom_id, a.value))
+            alternatives = tuple(a.alternatives) if kind == "select" else ()
+            plan.append(Action(_KIND_ACTION.get(kind, "type"), pf.dom_id, a.value, alternatives))
     return plan
 
 

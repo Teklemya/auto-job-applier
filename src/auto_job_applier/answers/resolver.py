@@ -16,11 +16,11 @@ from pydantic import BaseModel
 from ..llm import LLM, LLMError, QuotaExhausted
 from ..models import FormField, Job, ResolvedAnswer
 from ..profile import DECLINE, Profile
-from .bank import AnswerBank, normalize
+from .bank import AnswerBank, normalize, option_key
 from .facts import candidate_facts
 
 Writer = Callable[[FormField, Job, str], ResolvedAnswer]
-Value = str | bool | None
+Value = str | bool | list[str] | None  # a list: choices in the order to try them
 _BLANK = object()  # a source deliberately answers "leave this empty"
 
 _WORK_AUTH = re.compile(
@@ -88,9 +88,12 @@ def _profile_value(label: str, p: Profile) -> Value:
         (r"linkedin", lambda: p.links.linkedin),
         (r"github", lambda: p.links.github),
         (r"website|portfolio|personal site", lambda: p.links.portfolio),
-        (r"school|university|college|institution", lambda: edu and edu.school),
-        (r"\bdegree\b", lambda: edu and edu.degree),
-        (r"major|field of study|discipline", lambda: edu and edu.major),
+        (r"school|university|college|institution", lambda: edu and [edu.school, *edu.school_also]),
+        (r"\bdegree\b", lambda: edu and [edu.degree, *edu.degree_also]),
+        (
+            r"major|field of study|discipline",
+            lambda: edu and [edu.major, *edu.major_also],
+        ),
         (r"graduation year|year of graduation", lambda: edu and edu.graduation[:4]),
         (r"graduat", lambda: edu and edu.graduation),
         (r"\bgpa\b", lambda: edu and edu.gpa),
@@ -185,6 +188,8 @@ def match_option(value: Value, field: FormField) -> str | None:
     """The form's option for `value`, or the text itself for free-text fields."""
     if value is None:
         return None
+    if isinstance(value, list):  # the first choice the form offers
+        return next((m for v in value if (m := match_option(v, field)) is not None), None)
     if isinstance(value, bool):
         word = "yes" if value else "no"
         if not field.options:
@@ -197,6 +202,9 @@ def match_option(value: Value, field: FormField) -> str | None:
     for o in field.options:
         if normalize(o) == v:
             return o
+    spelled = [o for o in field.options if option_key(o) == option_key(value)]
+    if len(spelled) == 1:  # "Bachelor's" for "Bachelor's Degree"
+        return spelled[0]
     if value == DECLINE:
         hits = [o for o in field.options if _DECLINE_OPTION.search(normalize(o))]
     else:
@@ -214,6 +222,10 @@ def match_option(value: Value, field: FormField) -> str | None:
 
 
 def _answer(field: FormField, value: Value, source: str, reason: str = "") -> ResolvedAnswer:
+    if isinstance(value, list) and field.kind == "select" and not field.options:
+        # Options load as you type: the engine tries each choice on the page, in order.
+        first, *rest = value
+        return ResolvedAnswer(field, first, source, True, reason, rest)
     matched = match_option(value, field)
     if value is not None and matched is None:
         return ResolvedAnswer(field, None, source, False, f"{value!r} matches no option")
@@ -230,7 +242,8 @@ def _from_known_sources(
     """profile → preferences → bank (R10): the first answer that fits the field wins.
 
     A dropdown whose options load only as you type (school, degree) can't be checked against
-    the profile here, so an option the owner picked at review comes first.
+    the profile here, so an option the owner picked at review comes first and the profile's
+    choices follow as alternatives for the engine to try.
     """
     from_profile = ("profile", lambda: _profile_value(label, profile))
     from_preferences = ("preferences", lambda: _preference_value(label, f, profile))
@@ -246,6 +259,11 @@ def _from_known_sources(
             continue
         ans = _answer(f, None if v is _BLANK else v, source)
         if ans.confident:
+            if source == "bank" and f.kind == "select" and not f.options:
+                more = _profile_value(label, profile)
+                ans.alternatives = (
+                    [c for c in more if c != ans.value] if isinstance(more, list) else []
+                )
             return ans
     return None
 

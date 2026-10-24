@@ -303,6 +303,7 @@ class JobStore:
                 "source": a.source,
                 "confident": a.confident,
                 "reason": a.reason,
+                "alternatives": a.alternatives,
             }
             for pf, a in zip(packet.fields, packet.answers, strict=True)
         ]
@@ -322,7 +323,14 @@ class JobStore:
             field = FormField(**e["field"])
             fields.append(PageField(e["dom_id"], field))
             answers.append(
-                ResolvedAnswer(field, e["value"], e["source"], e["confident"], e["reason"])
+                ResolvedAnswer(
+                    field,
+                    e["value"],
+                    e["source"],
+                    e["confident"],
+                    e["reason"],
+                    e.get("alternatives", []),
+                )
             )
         return Packet(fields, answers, json.loads(row["blockers"]))
 
@@ -370,20 +378,21 @@ class JobStore:
             args.append(limit)
         return [_to_job(r) for r in self._conn.execute(sql, args)]
 
-    def count_events(self, to_status: Status, message: str, since: str) -> int:
-        """Status changes to `to_status` with exactly `message`, at or after `since` (ISO, UTC)."""
+    def count_events(self, message_prefix: str, since: str) -> int:
+        """Status changes whose message starts with `message_prefix`, at or after `since`
+        (ISO, UTC)."""
         row = self._conn.execute(
-            "SELECT COUNT(*) AS n FROM events WHERE to_status = ? AND message = ? AND at >= ?",
-            (to_status.value, message, since),
+            "SELECT COUNT(*) AS n FROM events WHERE substr(message, 1, ?) = ? AND at >= ?",
+            (len(message_prefix), message_prefix, since),
         ).fetchone()
         return row["n"]
 
     def new_since(self, since: str) -> dict[str, int]:
         """{ats: count} of jobs first collected at or after `since` that passed screening."""
         rows = self._conn.execute(
-            "SELECT ats, COUNT(*) AS n FROM jobs WHERE created_at >= ? AND status != ?"
+            "SELECT ats, COUNT(*) AS n FROM jobs WHERE created_at >= ? AND status NOT IN (?, ?)"
             " GROUP BY ats",
-            (since, Status.SKIPPED.value),
+            (since, Status.SKIPPED.value, Status.NEW.value),
         )
         return {r["ats"]: r["n"] for r in rows}
 

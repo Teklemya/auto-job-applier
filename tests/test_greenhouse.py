@@ -190,18 +190,25 @@ def test_fields_greyed_out_by_another_answer_are_not_fields():
 
 def test_submit_outcome_reads_the_confirmation_page():
     form = "https://job-boards.greenhouse.io/lyft/jobs/1"
-    assert greenhouse.submit_outcome(f"{form}/confirmation", "", []).confirmed
-    assert greenhouse.submit_outcome(form, "Thank you for applying to Lyft!", []).confirmed
-    assert greenhouse.submit_outcome(form, "Your application has been submitted.", []).confirmed
+    assert greenhouse.submit_outcome(f"{form}/confirmation", "", [], True).confirmed
+    assert greenhouse.submit_outcome(form, "Thank you for applying to Lyft!", [], False).confirmed
+    assert greenhouse.submit_outcome(
+        form, "Your application has been submitted.", [], False
+    ).confirmed
 
 
 def test_submit_outcome_stages_a_security_code_or_page_errors():
     form = "https://job-boards.greenhouse.io/lyft/jobs/1"
-    code = greenhouse.submit_outcome(form, "We sent a security code to j@x.com", [])
+    code = greenhouse.submit_outcome(form, "We sent a security code to j@x.com", [], True)
     assert not code.confirmed and "security code" in code.problems[0]
-    rejected = greenhouse.submit_outcome(form, "Apply", ["Phone is invalid"])
+    rejected = greenhouse.submit_outcome(form, "Apply", ["Phone is invalid"], True)
     assert rejected.problems == ["page rejected the submit: Phone is invalid"]
 
 
 def test_submit_outcome_waits_while_the_page_shows_nothing_new():
-    assert greenhouse.submit_outcome("https://x/jobs/1", "Apply for this job", []) is None
+    assert greenhouse.submit_outcome("https://x/jobs/1", "Apply for this job", [], True) is None
+
+
+def test_thank_you_text_in_the_job_description_is_not_a_confirmation():
+    jd = "Once your application has been submitted, our team will reach out."
+    assert greenhouse.submit_outcome("https://x/jobs/1", jd, [], form_showing=True) is None

@@ -15,7 +15,7 @@ from collections.abc import Callable
 from html.parser import HTMLParser
 from pathlib import Path
 
-from ..answers.bank import normalize
+from ..answers.bank import normalize, option_key
 from ..geo import US_STATES
 from ..jd_fetch import api_url, get_json
 from ..models import FormField, Job
@@ -165,6 +165,9 @@ def pick_option(value: str, options: list[str]) -> str | None:
     exact = [o for o in options if normalize(o) == wanted]
     if exact:
         return exact[0]
+    spelled = [o for o in options if option_key(o) == option_key(value)]
+    if len(spelled) == 1:  # "Bachelor's" for "Bachelor's Degree"
+        return spelled[0]
     head, *rest = [normalize(part) for part in value.split(",")]
     hits = [o for o in options if normalize(o).startswith(head)]
     for part in rest:
@@ -178,14 +181,18 @@ def fetch_questions(job: Job, get: Callable[[str], dict] = get_json) -> dict:
     return get(api_url(job) + "?questions=true")
 
 
-def submit_outcome(url: str, body_text: str, errors: list[str]) -> SubmitResult | None:
+def submit_outcome(
+    url: str, body_text: str, errors: list[str], form_showing: bool
+) -> SubmitResult | None:
     """What the page shows after Submit, or None while it is still deciding.
 
-    Greenhouse moves to a /confirmation page or thanks the applicant in place. Some boards
-    email a security code first: the application isn't sent until it is entered, so that is a
-    draft for the owner, as are validation errors.
+    Greenhouse moves to a /confirmation page or replaces the form with a thank-you. The job
+    description above the form can say "after your application is submitted", so thank-you
+    text counts only once the form is gone. Some boards email a security code first: the
+    application isn't sent until it is entered, so that is a draft for the owner, as are
+    validation errors. `errors` holds only errors that appeared after the click.
     """
-    if "/confirmation" in url or _CONFIRMED.search(body_text):
+    if "/confirmation" in url or (not form_showing and _CONFIRMED.search(body_text)):
         return SubmitResult(confirmed=True)
     if _SECURITY_CODE.search(body_text):
         return SubmitResult(False, ["email security code: enter it at review"])
@@ -214,6 +221,8 @@ class GreenhouseSession:
 
     def __init__(self, page, api: dict | None):
         self.page, self.api = page, api
+        self.picked: dict[str, str] = {}  # dom id → the option chosen in a type-to-search box
+        self.offered: dict[str, list[str]] = {}  # dom id → options seen there while typing
 
     @classmethod
     def open(cls, page, job: Job, api: dict | None) -> "GreenhouseSession":
@@ -256,24 +265,36 @@ class GreenhouseSession:
         elif a.kind == "check":
             box.check()
         elif a.kind == "choose":
-            return self._choose(box, a.dom_id, a.value)
+            return self._choose(box, a.dom_id, [a.value, *a.alternatives])
         return True
 
-    def _choose(self, box, dom_id: str, value: str) -> bool:
-        """Type into the React combobox, then click the option that means `value`."""
+    def _options_for(self, box, dom_id: str, query: str):
+        """Type `query` into the React combobox and return (option locator, option texts)."""
         options = self.page.locator(f"[id^='react-select-{dom_id}-option-']")
         box.click()
-        box.fill(value.split(",")[0][:40])
-        with contextlib.suppress(Exception):  # no options at all is handled below
+        box.fill(query)
+        with contextlib.suppress(Exception):  # no options at all is handled by the caller
             options.first.wait_for(timeout=6_000)
         texts = [t.strip() for t in options.all_inner_texts()]
-        choice = pick_option(value, texts)
-        if choice is None:
-            box.fill("")
-            box.press("Escape")
-            return False
-        options.nth(texts.index(choice)).click()
-        return True
+        seen = self.offered.setdefault(dom_id, [])
+        seen += [t for t in texts if t and t not in seen]
+        return options, texts
+
+    def _choose(self, box, dom_id: str, values: list[str]) -> bool:
+        """Click the option meaning the first of `values` the box offers, the way a person
+        works down their own list. If none fits, the options seen stay in `offered` (plus the
+        list an empty box shows) so the owner can pick one at review."""
+        for value in values:
+            options, texts = self._options_for(box, dom_id, value.split(",")[0][:40])
+            choice = pick_option(value, texts)
+            if choice is not None:
+                options.nth(texts.index(choice)).click()
+                self.picked[dom_id] = choice
+                return True
+        self._options_for(box, dom_id, "")
+        box.fill("")
+        box.press("Escape")
+        return False
 
     def page_blockers(self) -> list[str]:
         challenges = self.page.locator(_CHALLENGES)
@@ -283,17 +304,22 @@ class GreenhouseSession:
     def screenshot(self, path: Path) -> None:
         self.page.screenshot(path=path, full_page=True)
 
+    def _errors(self) -> list[str]:
+        return [t.strip() for t in self.page.locator(_ERRORS).all_inner_texts() if t.strip()]
+
     def submit(self) -> SubmitResult:
+        before = set(self._errors())  # banners and notices already on the page aren't errors
         self.page.locator(SUBMIT_BUTTON).last.click()
         for _ in range(SUBMIT_WAIT_MS // 500):
             self.page.wait_for_timeout(500)
             with contextlib.suppress(Exception):  # the page is navigating
-                errors = [
-                    t.strip() for t in self.page.locator(_ERRORS).all_inner_texts() if t.strip()
-                ]
-                outcome = submit_outcome(self.page.url, self.page.inner_text("body"), errors)
+                new = [e for e in self._errors() if e not in before]
+                showing = self.page.locator(FORM_READY).count() > 0
+                outcome = submit_outcome(self.page.url, self.page.inner_text("body"), new, showing)
                 if outcome is not None:
                     return outcome
+        if self.page_blockers():  # a challenge after the click: nothing was sent yet
+            return SubmitResult(False, ["CAPTCHA after Submit: solve it at review"])
         return SubmitResult(confirmed=False)
 
     def highlight(self, dom_ids: list[str]) -> None:

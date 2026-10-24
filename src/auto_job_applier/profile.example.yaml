@@ -39,6 +39,10 @@ education:
   - school: Example University
     degree: Bachelor of Science
     major: Computer Science
+    # Tried in order when a dropdown doesn't offer the value above. Leave a list empty to
+    # stage a draft instead.
+    degree_also: ["Bachelor's Degree", "Bachelor"]
+    major_also: []
     graduation: "2024-05"
     gpa: null
 

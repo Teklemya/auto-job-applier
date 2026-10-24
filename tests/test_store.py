@@ -171,12 +171,13 @@ def test_apply_queue_orders_by_tier_then_fit_score(store):
     assert [j.id for j in store.apply_queue(ATS.GREENHOUSE, limit=1)] == [remote_high]
 
 
-def test_count_events_counts_one_status_message_since_a_time(store):
+def test_count_events_counts_messages_by_prefix_since_a_time(store):
     job_id = _pending(store, 1)
-    store.set_status(job_id, Status.APPLIED, "submitted automatically")
-    assert store.count_events(Status.APPLIED, "submitted automatically", "2000-01-01") == 1
-    assert store.count_events(Status.APPLIED, "submitted by the owner", "2000-01-01") == 0
-    assert store.count_events(Status.APPLIED, "submitted automatically", "2999-01-01") == 0
+    store.set_status(job_id, Status.APPLIED, "submit clicked: confirmation page seen")
+    store.set_status(job_id, Status.FAILED, "submit clicked: no confirmation page")
+    store.set_status(job_id, Status.APPLIED, "submitted by the owner at review")
+    assert store.count_events("submit clicked: ", "2000-01-01") == 2
+    assert store.count_events("submit clicked: ", "2999-01-01") == 0
 
 
 def test_new_since_counts_screened_jobs_by_ats(store):

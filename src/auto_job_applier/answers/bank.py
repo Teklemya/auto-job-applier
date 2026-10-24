@@ -14,6 +14,25 @@ def normalize(question: str) -> str:
     return " ".join(_NOISE.sub(" ", text).split())
 
 
+_OPTION_SYNONYMS = [
+    (re.compile(r"\b(b s|bs|bsc|b sc)\b"), "bachelor of science"),
+    (re.compile(r"\b(b a|ba)\b"), "bachelor of arts"),
+    (re.compile(r"\b(m s|ms|msc|m sc)\b"), "master of science"),
+    (re.compile(r"\bbachelor s\b|\bbachelors\b"), "bachelor"),
+    (re.compile(r"\bmaster s\b|\bmasters\b"), "master"),
+    (re.compile(r"\bdegree\b"), ""),
+]
+
+
+def option_key(text: str) -> str:
+    """Dropdown text with spelling differences folded: "Bachelor's Degree", "Bachelors" and
+    "Bachelor" are one key, as are "BS" and "Bachelor of Science"."""
+    key = normalize(text)
+    for pattern, repl in _OPTION_SYNONYMS:
+        key = pattern.sub(repl, key)
+    return " ".join(key.split())
+
+
 def _numbers(text: str) -> list[str]:
     return re.findall(r"\d+", text)
 
