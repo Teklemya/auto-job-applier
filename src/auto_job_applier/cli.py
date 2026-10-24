@@ -1,7 +1,9 @@
 """`aja` command-line entry point."""
 
-from collections.abc import Iterator
+from collections import Counter
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+from datetime import UTC, datetime
 from enum import StrEnum
 from importlib import resources
 from pathlib import Path
@@ -13,14 +15,14 @@ from . import browser, paths, review
 from .answers.bank import AnswerBank
 from .answers.resolver import is_work_auth
 from .answers.writer import make_writer
-from .apply import stage
+from .apply import AUTO_SUBMITTED, stage
 from .engines import greenhouse
 from .engines.base import Packet, fill_plan
-from .fit import screen_fit
+from .fit import FitRun, screen_fit
 from .jd_fetch import FetchError, PostingClosed, Unsupported, fetch_description
-from .llm import LLMError, make_llm
+from .llm import LLM, LLMError, make_llm
 from .models import ATS, FormField, Job, Status
-from .profile import ProfileError, load_profile, load_targeting
+from .profile import Profile, ProfileError, Targeting, load_profile, load_targeting
 from .screen import screen_new
 from .sources import jobright, simplify
 from .store import JobStore
@@ -122,6 +124,48 @@ def _jobright_jobs() -> list[Job]:
     return jobright.parse_responses(payloads)
 
 
+def _gather(fetch: Callable[[], list[Job]], keep_going: bool) -> list[Job] | None:
+    """A source's jobs. With `keep_going`, a failed source is reported and skipped (None)."""
+    try:
+        return fetch()
+    except typer.Exit:
+        if not keep_going:
+            raise
+        return None
+
+
+def _collect_into(
+    store: JobStore,
+    targeting: Targeting,
+    file: Path | None,
+    source: Source,
+    keep_going: bool = False,
+) -> None:
+    use_simplify = file is not None or source in (Source.ALL, Source.SIMPLIFY)
+    use_jobright = file is None and source in (Source.ALL, Source.JOBRIGHT)
+    simplify_jobs = _gather(lambda: _simplify_jobs(file), keep_going) if use_simplify else None
+    jobright_jobs = _gather(_jobright_jobs, keep_going) if use_jobright else None
+    if simplify_jobs is not None:
+        inserted, updated = store.upsert_many(simplify_jobs)
+        retired = store.retire_missing("simplify", {j.url for j in simplify_jobs})
+        typer.echo(
+            f"SimplifyJobs: {len(simplify_jobs)} open SWE roles ({inserted} new, {updated} updated)"
+        )
+        if retired:
+            typer.echo(f"Retired {retired} postings no longer listed")
+    if jobright_jobs is not None:
+        # Jobright's feed is a rolling recommendation list, so nothing is retired from it.
+        inserted, updated = store.upsert_many(jobright_jobs)
+        typer.echo(
+            f"Jobright: {len(jobright_jobs)} roles liked or above "
+            f"{jobright.MIN_MATCH:.0f}% match ({inserted} new, {updated} updated)"
+        )
+    counts = screen_new(store, targeting)
+    if counts:
+        summary = ", ".join(f"{n} {s}" for s, n in sorted(counts.items()))
+        typer.echo(f"Screened {sum(counts.values())}: {summary}")
+
+
 @app.command()
 def collect(
     file: Annotated[
@@ -136,35 +180,11 @@ def collect(
     except ProfileError as e:
         typer.echo(str(e), err=True)
         raise typer.Exit(1) from e
-    use_simplify = file is not None or source in (Source.ALL, Source.SIMPLIFY)
-    use_jobright = file is None and source in (Source.ALL, Source.JOBRIGHT)
-    simplify_jobs = _simplify_jobs(file) if use_simplify else []
-    jobright_jobs = _jobright_jobs() if use_jobright else []
-
     store = _store()
     try:
-        if use_simplify:
-            inserted, updated = store.upsert_many(simplify_jobs)
-            retired = store.retire_missing("simplify", {j.url for j in simplify_jobs})
-            typer.echo(
-                f"SimplifyJobs: {len(simplify_jobs)} open SWE roles "
-                f"({inserted} new, {updated} updated)"
-            )
-            if retired:
-                typer.echo(f"Retired {retired} postings no longer listed")
-        if use_jobright:
-            # Jobright's feed is a rolling recommendation list, so nothing is retired from it.
-            inserted, updated = store.upsert_many(jobright_jobs)
-            typer.echo(
-                f"Jobright: {len(jobright_jobs)} roles liked or above "
-                f"{jobright.MIN_MATCH:.0f}% match ({inserted} new, {updated} updated)"
-            )
-        counts = screen_new(store, targeting)
+        _collect_into(store, targeting, file, source)
     finally:
         store.close()
-    if counts:
-        summary = ", ".join(f"{n} {s}" for s, n in sorted(counts.items()))
-        typer.echo(f"Screened {sum(counts.values())}: {summary}")
 
 
 @app.command()
@@ -184,6 +204,10 @@ def fit(
     for job, f in run.results:
         verdict = f"{f.verdict:>8} {f.score:>3}" if f.verdict else f"{'-':>8} {'-':>3}"
         typer.echo(f"{job.id:>5} {verdict}  {job.company[:20]:<20} {job.role[:40]:<40}  {f.reason}")
+    _fit_summary(run)
+
+
+def _fit_summary(run: FitRun) -> None:
     summary = ", ".join(f"{n} {k}" for k, n in sorted(run.counts.items()) if k != "checked")
     typer.echo(f"Fit checked {run.counts['checked']}" + (f" ({summary})" if summary else ""))
     if run.stopped:
@@ -240,9 +264,45 @@ def _greenhouse_session(job: Job, questions: bool = True) -> Iterator[greenhouse
             context.close()
 
 
+def _today_start() -> str:
+    """Local midnight as a store timestamp (UTC): the daily cap and supply count by your day."""
+    midnight = datetime.now().astimezone().replace(hour=0, minute=0, second=0, microsecond=0)
+    return midnight.astimezone(UTC).isoformat(timespec="seconds")
+
+
+def _submits_left(profile: Profile, store: JobStore) -> int:
+    """0 in shadow mode (S1); otherwise what today's cap (S2) still allows."""
+    if not profile.settings.submit:
+        return 0
+    used = store.count_events(Status.APPLIED, AUTO_SUBMITTED, _today_start())
+    return max(0, profile.settings.daily_submit_cap - used)
+
+
+def _apply_one(store: JobStore, profile: Profile, model: LLM, job: Job) -> Packet:
+    """Fill one Greenhouse job; submit it if live mode and the cap allow, else stage a draft."""
+    assert job.id is not None
+    jd = store.get_description(job.id)
+    if jd is None:
+        jd = fetch_description(job)
+        store.save_description(job.id, jd)
+    with _greenhouse_session(job) as session:
+        return stage(
+            job,
+            session,
+            store=store,
+            profile=profile,
+            llm=model,
+            jd=jd,
+            shots_dir=paths.artifacts_dir(),
+            writer=make_writer(profile, model),
+            submit=_submits_left(profile, store) > 0,
+        )
+
+
 @app.command("apply")
 def apply_job(job_id: int) -> None:
-    """Fill a Greenhouse application and save it as a draft. Never submits (shadow mode)."""
+    """Fill a Greenhouse application. It is submitted only in live mode, within the daily cap,
+    when nothing blocks it; otherwise it is saved as a draft."""
     store = _store()
     try:
         job = store.get(job_id)
@@ -262,22 +322,7 @@ def apply_job(job_id: int) -> None:
             )
             raise typer.Exit(1)
         profile = load_profile(paths.profile_path())
-        model = make_llm(profile, store, "answers")
-        jd = store.get_description(job_id)
-        if jd is None:
-            jd = fetch_description(job)
-            store.save_description(job_id, jd)
-        with _greenhouse_session(job) as session:
-            packet = stage(
-                job,
-                session,
-                store=store,
-                profile=profile,
-                llm=model,
-                jd=jd,
-                shots_dir=paths.artifacts_dir(),
-                writer=make_writer(profile, model),
-            )
+        packet = _apply_one(store, profile, make_llm(profile, store, "answers"), job)
         job = store.get(job_id)
     except (ProfileError, LLMError, FetchError, PostingClosed, Unsupported) as e:
         typer.echo(str(e), err=True)
@@ -287,6 +332,71 @@ def apply_job(job_id: int) -> None:
     typer.echo(f"#{job_id} {job.company}: {job.role} → {job.status} ({job.reason})")
     for blocker in packet.blockers:
         typer.echo(f"  - {blocker}")
+
+
+@app.command()
+def run(
+    limit: Annotated[int, typer.Option(help="Apply to at most this many Greenhouse jobs.")] = 5,
+    file: Annotated[
+        Path | None,
+        typer.Option(help="Parse a local SimplifyJobs README instead of fetching sources."),
+    ] = None,
+) -> None:
+    """One unattended pass: collect, screen, fit-check, then apply to the best Greenhouse jobs.
+
+    A source or job that fails is reported and the run goes on. Submits follow `aja apply`:
+    live mode, the daily cap and the gate (D1) decide; everything else becomes a draft.
+    """
+    since = _today_start()
+    try:
+        profile = load_profile(paths.profile_path())
+        targeting = load_targeting(paths.profile_path())
+    except ProfileError as e:
+        typer.echo(str(e), err=True)
+        raise typer.Exit(1) from e
+    store = _store()
+    outcomes: Counter[str] = Counter()
+    try:
+        _collect_into(store, targeting, file, Source.ALL, keep_going=True)
+        try:
+            _fit_summary(
+                screen_fit(store, profile, make_llm(profile, store, "fit"), fetch_description)
+            )
+            model = make_llm(profile, store, "answers")
+        except LLMError as e:
+            typer.echo(str(e), err=True)
+            raise typer.Exit(1) from e
+        for job in store.apply_queue(ATS.GREENHOUSE, limit):
+            assert job.id is not None
+            try:
+                _apply_one(store, profile, model, job)
+            except PostingClosed as e:
+                store.set_status(job.id, Status.SKIPPED, f"posting closed: {e}")
+            except (FetchError, Unsupported) as e:
+                typer.echo(f"#{job.id} {job.company}: no description ({e}); retried next run")
+                outcomes["waiting"] += 1
+                continue
+            except Exception as e:  # a browser error: FAILED, never retried blindly
+                store.set_status(job.id, Status.FAILED, f"engine error: {e}"[:300])
+            done = store.get(job.id)
+            outcomes[done.status.value] += 1
+            typer.echo(f"#{job.id} {done.company}: {done.role} → {done.status} ({done.reason})")
+        _run_summary(store, profile, outcomes, since)
+    finally:
+        store.close()
+
+
+def _run_summary(store: JobStore, profile: Profile, outcomes: Counter[str], since: str) -> None:
+    mode = "live" if profile.settings.submit else "shadow mode"
+    typer.echo(
+        f"\nRun ({mode}): {outcomes[Status.APPLIED]} submitted, {outcomes[Status.STAGED]} drafts, "
+        f"{outcomes[Status.FAILED]} failed, {outcomes[Status.SKIPPED]} closed"
+    )
+    new = store.new_since(since)
+    supply = ", ".join(f"{ats} {n}" for ats, n in sorted(new.items(), key=lambda kv: -kv[1]))
+    typer.echo(f"New today that passed screening: {supply or 'none'}")
+    waiting = len(store.apply_queue(ATS.GREENHOUSE))
+    typer.echo(f"Greenhouse jobs still queued: {waiting}. Drafts: `aja review`")
 
 
 def _review_list(store: JobStore) -> None:

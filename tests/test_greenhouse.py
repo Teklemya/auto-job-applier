@@ -186,3 +186,22 @@ def test_fields_greyed_out_by_another_answer_are_not_fields():
     assert "end-date-month-0" not in ids
     assert "end-date-year-0" not in ids
     assert "start-date-month-0" in ids
+
+
+def test_submit_outcome_reads_the_confirmation_page():
+    form = "https://job-boards.greenhouse.io/lyft/jobs/1"
+    assert greenhouse.submit_outcome(f"{form}/confirmation", "", []).confirmed
+    assert greenhouse.submit_outcome(form, "Thank you for applying to Lyft!", []).confirmed
+    assert greenhouse.submit_outcome(form, "Your application has been submitted.", []).confirmed
+
+
+def test_submit_outcome_stages_a_security_code_or_page_errors():
+    form = "https://job-boards.greenhouse.io/lyft/jobs/1"
+    code = greenhouse.submit_outcome(form, "We sent a security code to j@x.com", [])
+    assert not code.confirmed and "security code" in code.problems[0]
+    rejected = greenhouse.submit_outcome(form, "Apply", ["Phone is invalid"])
+    assert rejected.problems == ["page rejected the submit: Phone is invalid"]
+
+
+def test_submit_outcome_waits_while_the_page_shows_nothing_new():
+    assert greenhouse.submit_outcome("https://x/jobs/1", "Apply for this job", []) is None

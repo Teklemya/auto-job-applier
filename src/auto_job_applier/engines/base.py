@@ -4,7 +4,7 @@ Engines only navigate. They read the visible form into `PageField`s, the resolve
 `FormField`s, and `fill_plan` turns the answers into browser actions.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..models import FormField, ResolvedAnswer
@@ -54,3 +54,11 @@ class Packet:
     fields: list[PageField]
     answers: list[ResolvedAnswer]
     blockers: list[str]  # labels of required fields without a confident answer, or page issues
+
+
+@dataclass
+class SubmitResult:
+    """What the page showed after Submit was clicked (S3)."""
+
+    confirmed: bool
+    problems: list[str] = field(default_factory=list)  # validation errors, a security code

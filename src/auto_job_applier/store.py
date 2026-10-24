@@ -355,6 +355,38 @@ class JobStore:
         ).fetchone()
         return (row["calls"], row["rate_limited"]) if row else (0, 0)
 
+    def apply_queue(self, ats: ATS, limit: int | None = None) -> list[Job]:
+        """Fit-checked PENDING jobs on `ats`, best first: location tier, then fit score (D9).
+        Jobs still waiting for a fit check are left for a later run."""
+        sql = (
+            "SELECT jobs.* FROM jobs JOIN fit_checks ON fit_checks.job_id = jobs.id"
+            " WHERE jobs.status = ? AND jobs.ats = ?"
+            " ORDER BY jobs.tier IS NULL, jobs.tier, fit_checks.score IS NULL,"
+            " fit_checks.score DESC, jobs.id"
+        )
+        args: list = [Status.PENDING.value, ats.value]
+        if limit is not None:
+            sql += " LIMIT ?"
+            args.append(limit)
+        return [_to_job(r) for r in self._conn.execute(sql, args)]
+
+    def count_events(self, to_status: Status, message: str, since: str) -> int:
+        """Status changes to `to_status` with exactly `message`, at or after `since` (ISO, UTC)."""
+        row = self._conn.execute(
+            "SELECT COUNT(*) AS n FROM events WHERE to_status = ? AND message = ? AND at >= ?",
+            (to_status.value, message, since),
+        ).fetchone()
+        return row["n"]
+
+    def new_since(self, since: str) -> dict[str, int]:
+        """{ats: count} of jobs first collected at or after `since` that passed screening."""
+        rows = self._conn.execute(
+            "SELECT ats, COUNT(*) AS n FROM jobs WHERE created_at >= ? AND status != ?"
+            " GROUP BY ats",
+            (since, Status.SKIPPED.value),
+        )
+        return {r["ats"]: r["n"] for r in rows}
+
     def counts(self) -> dict[tuple[str, str], int]:
         """{(ats, status): count}"""
         rows = self._conn.execute("SELECT ats, status, COUNT(*) AS n FROM jobs GROUP BY 1, 2")

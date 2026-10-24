@@ -10,6 +10,7 @@ section in the label ("Employment: Title") so the resolver can tell them apart.
 import contextlib
 import html as html_lib
 import random
+import re
 from collections.abc import Callable
 from html.parser import HTMLParser
 from pathlib import Path
@@ -18,7 +19,7 @@ from ..answers.bank import normalize
 from ..geo import US_STATES
 from ..jd_fetch import api_url, get_json
 from ..models import FormField, Job
-from .base import Action, PageField
+from .base import Action, PageField, SubmitResult
 
 _SECTIONS = {"employment--container": "Employment", "education--container": "Education"}
 # Not questions: the paste-instead-of-upload boxes, the captcha token, the phone country search.
@@ -177,10 +178,35 @@ def fetch_questions(job: Job, get: Callable[[str], dict] = get_json) -> dict:
     return get(api_url(job) + "?questions=true")
 
 
+def submit_outcome(url: str, body_text: str, errors: list[str]) -> SubmitResult | None:
+    """What the page shows after Submit, or None while it is still deciding.
+
+    Greenhouse moves to a /confirmation page or thanks the applicant in place. Some boards
+    email a security code first: the application isn't sent until it is entered, so that is a
+    draft for the owner, as are validation errors.
+    """
+    if "/confirmation" in url or _CONFIRMED.search(body_text):
+        return SubmitResult(confirmed=True)
+    if _SECURITY_CODE.search(body_text):
+        return SubmitResult(False, ["email security code: enter it at review"])
+    if errors:
+        return SubmitResult(False, [f"page rejected the submit: {e}" for e in errors])
+    return None
+
+
 # --- the live page ----------------------------------------------------------------------------
 
 FORM_READY = "#first_name"
 _CHALLENGES = "iframe[src*='recaptcha'][src*='bframe'], iframe[src*='hcaptcha'][src*='challenge']"
+SUBMIT_BUTTON = "button[type='submit']"
+_ERRORS = ".helper-text--error, .error-message, [role='alert']"
+_CONFIRMED = re.compile(
+    r"thank you for (applying|your application)|application (has been )?(submitted|received)"
+    r"|we(.ve| have) received your application",
+    re.I,
+)
+_SECURITY_CODE = re.compile(r"(enter|sent).{0,40}(security|verification) code", re.I)
+SUBMIT_WAIT_MS = 30_000
 
 
 class GreenhouseSession:
@@ -256,6 +282,19 @@ class GreenhouseSession:
 
     def screenshot(self, path: Path) -> None:
         self.page.screenshot(path=path, full_page=True)
+
+    def submit(self) -> SubmitResult:
+        self.page.locator(SUBMIT_BUTTON).last.click()
+        for _ in range(SUBMIT_WAIT_MS // 500):
+            self.page.wait_for_timeout(500)
+            with contextlib.suppress(Exception):  # the page is navigating
+                errors = [
+                    t.strip() for t in self.page.locator(_ERRORS).all_inner_texts() if t.strip()
+                ]
+                outcome = submit_outcome(self.page.url, self.page.inner_text("body"), errors)
+                if outcome is not None:
+                    return outcome
+        return SubmitResult(confirmed=False)
 
     def highlight(self, dom_ids: list[str]) -> None:
         """Outline fields for the owner at review."""
