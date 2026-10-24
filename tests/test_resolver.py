@@ -640,7 +640,13 @@ def test_how_did_you_first_learn_about_us_is_a_preference(profile, bank):
     [a] = run(
         [F("How did you first learn about Affirm as an employer?", required=True)], profile, bank
     )
-    assert (a.value, a.source) == (profile.preferences.heard_about_us, "preferences")
+    assert (a.value, a.source) == ("Job board", "preferences")
+
+
+def test_heard_about_us_takes_the_first_choice_the_form_offers(profile, bank):
+    field = F("How did you hear about us?", "select", options=["LinkedIn", "Referral", "Other"])
+    [a] = run([field], profile, bank)
+    assert a.value == "Other"
 
 
 def test_pronouns_come_from_the_profile_not_the_gender_answer(profile, bank):

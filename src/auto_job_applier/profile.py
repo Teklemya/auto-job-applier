@@ -123,7 +123,8 @@ class Demographics(_Strict):
 
 class Preferences(_Strict):
     start_date: str = "Two weeks after offer"
-    heard_about_us: str = "Job board"
+    # One answer, or choices tried in order until the form offers one.
+    heard_about_us: str | list[str] = ["Job board", "Online job board", "Job posting", "Other"]
     salary_floor: int = 120_000  # never answer below this (R12)
     willing_to_relocate: bool = True
 

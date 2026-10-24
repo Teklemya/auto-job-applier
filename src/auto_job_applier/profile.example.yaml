@@ -63,7 +63,8 @@ demographics:
 
 preferences:
   start_date: Two weeks after offer
-  heard_about_us: Job board
+  # Tried in order until a form's dropdown offers one.
+  heard_about_us: ["Job board", "Online job board", "Job posting", "Other"]
   salary_floor: 120000
   willing_to_relocate: true
 
