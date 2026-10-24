@@ -4,6 +4,8 @@ UNIQUE(url) gives dedup on re-ingest, status updates are single-row transactions
 is an append-only audit log of every status change.
 """
 
+from __future__ import annotations
+
 import json
 import sqlite3
 from collections.abc import Iterable
