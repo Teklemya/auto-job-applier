@@ -81,12 +81,14 @@ def stage(
     shots_dir: Path,
     writer: Writer | None = None,
     submit: bool = False,
+    held: str = SHADOW_READY,
 ) -> Packet:
     """Answer and fill the form, then submit it or save it as a draft (D1, D3).
 
     It submits only when `submit` is set (live mode with the daily cap not reached; the caller
-    decides) and nothing blocks. APPLIED needs the confirmation page (S3). A page that rejects
-    the submit stages a draft; no confirmation at all is FAILED, so the job is never re-sent.
+    decides) and nothing blocks; `held` says why a ready form was not submitted. APPLIED
+    needs the confirmation page (S3). A page that rejects the submit stages a draft; no
+    confirmation at all is FAILED, so the job is never re-sent.
 
     Answers can change the form: "Hispanic/Latino: No" reveals a race question, "Current
     role" hides the end date. So the page is read again after each pass, new fields are
@@ -122,7 +124,7 @@ def stage(
     session.screenshot(shots_dir / f"{job.id}-{datetime.now():%Y%m%d-%H%M%S}.png")
     store.save_packet(job.id, packet)
     if packet.blockers or not submit:
-        store.set_status(job.id, Status.STAGED, _draft_reason(packet))
+        store.set_status(job.id, Status.STAGED, _draft_reason(packet, held))
         return packet
     try:
         result = session.submit()
@@ -161,5 +163,5 @@ def _with_typeahead(
     return fields, answers
 
 
-def _draft_reason(packet: Packet) -> str:
-    return f"needs review: {len(packet.blockers)} blocking" if packet.blockers else SHADOW_READY
+def _draft_reason(packet: Packet, held: str = SHADOW_READY) -> str:
+    return f"needs review: {len(packet.blockers)} blocking" if packet.blockers else held

@@ -544,6 +544,7 @@ def test_a_click_is_remembered_after_a_refill_rewrites_the_reason(
     result = runner.invoke(cli.app, ["apply", str(job_id)])
     assert result.exit_code == 0, result.output
     assert sessions[0].submitted == 0
+    assert "--retry" in result.output and "shadow mode" not in result.output
 
 
 def test_unconfirmed_clicks_count_toward_the_daily_cap(
@@ -563,8 +564,9 @@ def test_unconfirmed_clicks_count_toward_the_daily_cap(
     second = queue(home_with_profile, brex)
     sessions = []
     ready_greenhouse(monkeypatch, sessions)
-    runner.invoke(cli.app, ["apply", str(second)])
+    result = runner.invoke(cli.app, ["apply", str(second)])
     assert sessions[0].submitted == 0
+    assert "today's cap of 1 is used" in result.output
 
 
 def test_retry_submits_a_click_that_did_not_go_through_and_waits_for_a_code(
