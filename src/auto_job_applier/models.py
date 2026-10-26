@@ -57,6 +57,8 @@ class FormField:
     kind: str = "text"  # text | textarea | select | radio | checkbox | file
     required: bool = False
     options: list[str] = field(default_factory=list)  # select/radio choices
+    # Type-to-search box: `options` are only the ones seen while typing, not the full list.
+    typeahead: bool = False
 
 
 @dataclass
@@ -66,6 +68,9 @@ class ResolvedAnswer:
     source: str  # profile | preferences | bank | llm | none
     confident: bool
     reason: str = ""
+    # For a dropdown whose options load as you type: more values to try, in order, when the
+    # form offers no option for `value`.
+    alternatives: list[str] = field(default_factory=list)
 
 
 @dataclass

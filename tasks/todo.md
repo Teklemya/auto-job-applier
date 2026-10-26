@@ -31,6 +31,13 @@ Every task: `ruff check . && pytest` passes, plus its manual check.
 ## Phase 3: Real sites (supervised, shadow mode forced on)
 - [x] T11 Jobright collector (moved up): browser profile + `aja login`, Liked + >80% match → final ATS URL → filters. `aja collect --source jobright`; live read 2026-10-17: 92 roles (26 Greenhouse/Lever/Workday pending). Liked page verified live with 3 liked jobs
 - [ ] T7 Greenhouse engine + `aja review` (re-fill under 10s, highlight blockers, save to answer bank). Built 2026-10-17: `aja apply <id>` staged Lyft, Brex, SeatGeek live (drafts only). Left: owner runs `aja review` on one draft; work-auth option mapping (owner decision)
+- [x] Greenhouse-first re-scope (2026-10-24): `aja run --limit N` (collect → screen → fit → apply the best
+  Greenhouse jobs, then a summary with new fillable jobs per ATS) and the T10 submit path for Greenhouse
+  were pulled ahead of T8/T9. T8 and T9 wait for a few days of supply numbers from `aja run`
+- [x] Emailed security codes (2026-10-26): Greenhouse asks for an 8-character code after Submit.
+  `inbox.py` reads it from Gmail over IMAP (app password in the Keychain via `aja login-mail`,
+  read only, Greenhouse sender + company + after the click), and submits wait for their code one
+  at a time. Left: first live run with the reader on
 - [ ] T8 Lever engine. From the T7 review: pick the engine by ATS (CLI hard-codes Greenhouse) and add `highlight` to `FormSession`
 - [ ] T9a Workday auth (D11): Google first, else Keychain password; `ats_accounts` table; verification wall → STAGED + notify, resend when stale
 - [ ] T9b Workday wizard + native draft: reach Review; gate fail → Save for later
@@ -39,7 +46,10 @@ Every task: `ruff check . && pytest` passes, plus its manual check.
 - [ ] Owner reviews a week of shadow-mode drafts
 
 ## Phase 4: Autonomy
-- [ ] T10 Submit path: confirm the success page before APPLIED, daily cap, screenshots
+- [ ] T10 Submit path: confirm the success page before APPLIED, daily cap, screenshots. Built for
+  Greenhouse (2026-10-24): APPLIED only on a confirmation page, a rejected submit or an emailed
+  security code → STAGED, no confirmation → FAILED (never re-sent). Left: one live submit after the
+  owner turns shadow mode off
 - [ ] T12 Scheduling + notifications: launchd at 8am and 2pm, catch-up on wake, lock, macOS summary
 - [ ] T13 Salary lookup: Gemini + Search grounding range cache, $120k floor
 

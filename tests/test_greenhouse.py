@@ -186,3 +186,44 @@ def test_fields_greyed_out_by_another_answer_are_not_fields():
     assert "end-date-month-0" not in ids
     assert "end-date-year-0" not in ids
     assert "start-date-month-0" in ids
+
+
+def test_submit_outcome_reads_the_confirmation_page():
+    form = "https://job-boards.greenhouse.io/lyft/jobs/1"
+    assert greenhouse.submit_outcome(f"{form}/confirmation", "", [], True).confirmed
+    assert greenhouse.submit_outcome(form, "Thank you for applying to Lyft!", [], False).confirmed
+    assert greenhouse.submit_outcome(
+        form, "Your application has been submitted.", [], False
+    ).confirmed
+
+
+def test_submit_outcome_stages_a_security_code_or_page_errors():
+    form = "https://job-boards.greenhouse.io/lyft/jobs/1"
+    code = greenhouse.submit_outcome(form, "Enter the code", [], True, code_asked=True)
+    assert not code.confirmed and "security code" in code.problems[0]
+    rejected = greenhouse.submit_outcome(form, "Apply", ["Phone is invalid"], True)
+    assert rejected.problems == ["page rejected the submit: Phone is invalid"]
+
+
+def test_submit_outcome_waits_while_the_page_shows_nothing_new():
+    assert greenhouse.submit_outcome("https://x/jobs/1", "Apply for this job", [], True) is None
+
+
+def test_thank_you_text_in_the_job_description_is_not_a_confirmation():
+    jd = "Once your application has been submitted, our team will reach out."
+    assert greenhouse.submit_outcome("https://x/jobs/1", jd, [], form_showing=True) is None
+
+
+def test_greenhouses_verification_code_page_is_recognized():
+    text = (
+        "A verification code was sent to j@x.com. To submit your application, enter the "
+        "8-character code to confirm you're a human. Security code"
+    )
+    assert greenhouse._SECURITY_CODE.search(text)
+
+
+def test_a_job_description_about_security_codes_does_not_hide_the_code_prompt():
+    jd = "You will build security code review tools. Apply below."
+    prompt = jd + " A verification code was sent to j@x.com. Security code"
+    assert not greenhouse.code_newly_asked(jd, jd)
+    assert greenhouse.code_newly_asked(jd, prompt)

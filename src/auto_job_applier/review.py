@@ -37,6 +37,8 @@ def apply_answers(packet: Packet, given: dict[str, str], bank: AnswerBank) -> Pa
         if pf.dom_id not in given:
             continue
         value = match_option(given[pf.dom_id], pf.field) or _by_number(given[pf.dom_id], pf)
+        if value is None and pf.field.typeahead:  # the box searches more than was seen
+            value = given[pf.dom_id]
         if value is None:
             raise ValueError(
                 f"{given[pf.dom_id]!r} doesn't pick exactly one option. "

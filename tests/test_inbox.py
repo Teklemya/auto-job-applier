@@ -1,0 +1,170 @@
+from datetime import UTC, datetime, timedelta
+from email.message import EmailMessage
+from email.utils import format_datetime
+
+from auto_job_applier import inbox
+
+CLICK = datetime(2026, 10, 24, 6, 21, tzinfo=UTC)
+
+
+def code_email(company="Affirm", code="Xk7pQ2mZ", at=CLICK + timedelta(seconds=40), sender=None):
+    msg = EmailMessage()
+    msg["From"] = sender or "Greenhouse <no-reply@us.greenhouse-mail.io>"
+    msg["To"] = "jane.doe@example.com"
+    msg["Subject"] = f"Security code for your application to {company}"
+    msg["Date"] = format_datetime(at)
+    msg["Message-ID"] = f"<{company}-{code}@greenhouse>"
+    msg.set_content("Copy and paste this code into the security code field.")
+    msg.add_alternative(
+        "<html><body><h1>Greenhouse Recruiting</h1><p>Copy and paste this code into the "
+        f"security code field on your application.</p><h1>{code}</h1>"
+        "<p>Greenhouse Software</p></body></html>",
+        subtype="html",
+    )
+    return msg
+
+
+def test_the_code_on_its_own_line_is_read():
+    assert inbox.code_in(code_email(), "Affirm", CLICK) == "Xk7pQ2mZ"
+
+
+def test_a_code_for_another_company_is_ignored():
+    assert inbox.code_in(code_email(company="Brex"), "Affirm", CLICK) is None
+
+
+def test_a_code_sent_before_the_click_is_ignored():
+    early = code_email(at=CLICK - timedelta(minutes=5))
+    assert inbox.code_in(early, "Affirm", CLICK) is None
+
+
+def test_only_greenhouse_can_send_a_code():
+    fake = code_email(sender="Greenhouse <no-reply@greenhouse-mail.example.com>")
+    assert inbox.code_in(fake, "Affirm", CLICK) is None
+
+
+def test_two_new_codes_for_one_company_are_too_unclear_to_use():
+    msgs = [("a", code_email(code="AAAA1111")), ("b", code_email(code="BBBB2222"))]
+    assert inbox.pick_code(msgs, "Affirm", CLICK, set()) is None
+
+
+def test_a_code_already_typed_is_never_used_again():
+    msgs = [("a", code_email(code="AAAA1111")), ("b", code_email(code="BBBB2222"))]
+    assert inbox.pick_code(msgs, "Affirm", CLICK, {"a"}) == ("b", "BBBB2222")
+
+
+class FakeIMAP:
+    """An inbox whose messages arrive on the given poll (0 = first)."""
+
+    def __init__(self, arrivals, fail_on=()):
+        self.arrivals, self.polls, self.logins, self.fail_on = arrivals, 0, 0, fail_on
+
+    def __call__(self):
+        self.polls += 1
+        return self
+
+    def noop(self):
+        self.polls += 1
+        return "OK", [b""]
+
+    def login(self, user, password):
+        assert password == "app-password"
+        self.logins += 1
+
+    def select(self, box, readonly):
+        assert readonly
+        self.box = box
+        return "OK", [b"1"]
+
+    def search(self, charset, *criteria):
+        if self.polls in self.fail_on:
+            raise ConnectionResetError("dropped")
+        assert inbox.SENDER in " ".join(criteria)
+        n = sum(1 for when, _ in self.arrivals if when < self.polls)
+        return "OK", [b" ".join(str(i + 1).encode() for i in range(n))]
+
+    def fetch(self, num, what):
+        assert "PEEK" in what  # never marks mail as read
+        msg = self.arrivals[int(num) - 1][1]
+        return "OK", [(b"1 (BODY[] {1})", msg.as_bytes()), b")"]
+
+    def logout(self):
+        pass
+
+
+def reader(arrivals, timeout_s=60, imap=None):
+    now = [0.0]
+
+    def sleep(s):
+        now[0] += s
+
+    return inbox.GmailCodes(
+        "jane.doe@example.com",
+        "app-password",
+        connect=imap or FakeIMAP(arrivals),
+        sleep=sleep,
+        clock=lambda: now[0],
+        timeout_s=timeout_s,
+    )
+
+
+def test_the_reader_waits_for_a_late_code():
+    codes = reader([(3, code_email())])
+    assert codes("Affirm", CLICK) == "Xk7pQ2mZ"
+
+
+def test_back_to_back_jobs_at_one_company_each_get_their_own_code():
+    first = code_email(code="AAAA1111", at=CLICK + timedelta(seconds=30))
+    second = code_email(code="BBBB2222", at=CLICK + timedelta(minutes=2))
+    codes = reader([(0, first), (2, second)])
+    assert codes("Affirm", CLICK) == "AAAA1111"
+    assert codes("Affirm", CLICK + timedelta(minutes=1)) == "BBBB2222"
+
+
+def test_no_code_in_time_is_none_and_that_company_waits_for_the_next_run():
+    codes = reader([(99, code_email())], timeout_s=30)
+    assert codes("Affirm", CLICK) is None
+    # Its code could still arrive and be mistaken for the next Affirm job's.
+    assert codes("Affirm", CLICK + timedelta(minutes=5)) is None
+
+
+def test_explain_says_why_each_email_is_skipped():
+    msgs = [(0, code_email(company="Brex")), (0, code_email(at=CLICK - timedelta(hours=1)))]
+    lines = reader(msgs).explain("Affirm", CLICK)
+    assert "for another company" in lines[0]
+    assert "sent before the Submit click" in lines[1]
+
+
+def test_explain_masks_the_code():
+    [line] = reader([(0, code_email())]).explain("Affirm", CLICK)
+    assert "Xk******" in line and "Xk7pQ2mZ" not in line
+
+
+def test_the_reader_searches_all_mail_so_archived_codes_count():
+    imap = FakeIMAP([(0, code_email())])
+    codes = inbox.GmailCodes("jane.doe@example.com", "app-password", connect=imap)
+    codes("Affirm", CLICK)
+    assert imap.box == inbox.MAILBOX
+
+
+def test_one_sign_in_per_wait():
+    imap = FakeIMAP([(4, code_email())])
+    assert reader([], imap=imap)("Affirm", CLICK) == "Xk7pQ2mZ"
+    assert imap.logins == 1
+
+
+def test_a_dropped_connection_signs_in_again():
+    imap = FakeIMAP([(4, code_email())], fail_on={2})
+    assert reader([], imap=imap)("Affirm", CLICK) == "Xk7pQ2mZ"
+    assert imap.logins == 2
+
+
+def test_a_date_without_a_zone_is_read_as_utc():
+    msg = code_email()
+    msg.replace_header("Date", "Sat, 24 Oct 2026 06:21:40 -0000")
+    assert inbox.code_in(msg, "Affirm", CLICK) == "Xk7pQ2mZ"
+
+
+def test_an_unreadable_date_is_skipped_not_a_crash():
+    msg = code_email()
+    msg.replace_header("Date", "sometime yesterday")
+    assert inbox.check(msg, "Affirm", CLICK) == (None, "no readable Date header")
