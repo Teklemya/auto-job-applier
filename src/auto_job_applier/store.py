@@ -4,13 +4,17 @@ UNIQUE(url) gives dedup on re-ingest, status updates are single-row transactions
 is an append-only audit log of every status change.
 """
 
+from __future__ import annotations
+
 import json
 import sqlite3
 from collections.abc import Iterable
+from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
 
-from .models import ATS, Fit, Job, Status, Tier
+from .engines.base import Packet, PageField
+from .models import ATS, Fit, FormField, Job, ResolvedAnswer, Status, Tier
 
 _STATUSES = ", ".join(f"'{s}'" for s in Status)
 # Not yet in flight: safe to re-screen when the posting's facts change.
@@ -67,6 +71,14 @@ CREATE TABLE IF NOT EXISTS answer_bank (
     question      TEXT NOT NULL,
     value         TEXT NOT NULL,
     updated_at    TEXT NOT NULL
+);
+
+-- The resolved form of a staged job (D3): `aja review` re-fills from it without the LLM.
+CREATE TABLE IF NOT EXISTS packets (
+    job_id      INTEGER PRIMARY KEY REFERENCES jobs (id) ON DELETE CASCADE,
+    entries     TEXT NOT NULL,
+    blockers    TEXT NOT NULL,
+    saved_at    TEXT NOT NULL
 );
 
 -- LLM calls per local day and model: daily budgets (D10) hold across runs.
@@ -282,6 +294,46 @@ class JobStore:
             row["verdict"], row["score"], json.loads(row["keywords"]), row["reason"], row["source"]
         )
 
+    def save_packet(self, job_id: int, packet: Packet) -> None:
+        entries = [
+            {
+                "dom_id": pf.dom_id,
+                "field": asdict(pf.field),
+                "value": a.value,
+                "source": a.source,
+                "confident": a.confident,
+                "reason": a.reason,
+                "alternatives": a.alternatives,
+            }
+            for pf, a in zip(packet.fields, packet.answers, strict=True)
+        ]
+        with self._conn:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO packets (job_id, entries, blockers, saved_at)"
+                " VALUES (?, ?, ?, ?)",
+                (job_id, json.dumps(entries), json.dumps(packet.blockers), _now()),
+            )
+
+    def get_packet(self, job_id: int) -> Packet | None:
+        row = self._conn.execute("SELECT * FROM packets WHERE job_id = ?", (job_id,)).fetchone()
+        if row is None:
+            return None
+        fields, answers = [], []
+        for e in json.loads(row["entries"]):
+            field = FormField(**e["field"])
+            fields.append(PageField(e["dom_id"], field))
+            answers.append(
+                ResolvedAnswer(
+                    field,
+                    e["value"],
+                    e["source"],
+                    e["confident"],
+                    e["reason"],
+                    e.get("alternatives", []),
+                )
+            )
+        return Packet(fields, answers, json.loads(row["blockers"]))
+
     def bank_entries(self) -> list[tuple[str, str]]:
         """[(question_key, value)]"""
         rows = self._conn.execute("SELECT question_key, value FROM answer_bank")
@@ -310,6 +362,39 @@ class JobStore:
             "SELECT calls, rate_limited FROM llm_calls WHERE day = ? AND model = ?", (day, model)
         ).fetchone()
         return (row["calls"], row["rate_limited"]) if row else (0, 0)
+
+    def apply_queue(self, ats: ATS, limit: int | None = None) -> list[Job]:
+        """Fit-checked PENDING jobs on `ats`, best first: location tier, then fit score (D9).
+        Jobs still waiting for a fit check are left for a later run."""
+        sql = (
+            "SELECT jobs.* FROM jobs JOIN fit_checks ON fit_checks.job_id = jobs.id"
+            " WHERE jobs.status = ? AND jobs.ats = ?"
+            " ORDER BY jobs.tier IS NULL, jobs.tier, fit_checks.score IS NULL,"
+            " fit_checks.score DESC, jobs.id"
+        )
+        args: list = [Status.PENDING.value, ats.value]
+        if limit is not None:
+            sql += " LIMIT ?"
+            args.append(limit)
+        return [_to_job(r) for r in self._conn.execute(sql, args)]
+
+    def count_events(self, message_prefix: str, since: str) -> int:
+        """Status changes whose message starts with `message_prefix`, at or after `since`
+        (ISO, UTC)."""
+        row = self._conn.execute(
+            "SELECT COUNT(*) AS n FROM events WHERE substr(message, 1, ?) = ? AND at >= ?",
+            (len(message_prefix), message_prefix, since),
+        ).fetchone()
+        return row["n"]
+
+    def new_since(self, since: str) -> dict[str, int]:
+        """{ats: count} of jobs first collected at or after `since` that passed screening."""
+        rows = self._conn.execute(
+            "SELECT ats, COUNT(*) AS n FROM jobs WHERE created_at >= ? AND status NOT IN (?, ?)"
+            " GROUP BY ats",
+            (since, Status.SKIPPED.value, Status.NEW.value),
+        )
+        return {r["ats"]: r["n"] for r in rows}
 
     def counts(self) -> dict[tuple[str, str], int]:
         """{(ats, status): count}"""

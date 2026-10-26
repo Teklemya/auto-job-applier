@@ -206,12 +206,12 @@ def test_remaining_fields_go_to_the_llm_in_one_call(profile, bank):
     fields = [
         F("First Name"),
         F("Have you used Python professionally?", "select", options=YES_NO),
-        F("Do you have relatives working at Acme?", "select", options=YES_NO),
+        F("Are you willing to work weekends?", "select", options=YES_NO),
     ]
     model = FakeLLM(llm_says((1, "Yes", True), (2, "No", False)))
     got = run(fields, profile, bank, model)
     [call] = model.calls
-    assert "Python professionally" in call["prompt"] and "relatives" in call["prompt"]
+    assert "Python professionally" in call["prompt"] and "weekends" in call["prompt"]
     assert "First Name" not in call["prompt"]
     assert call["attachments"] == [(profile.resume_path.read_bytes(), "application/pdf")]
     assert [(a.value, a.source, a.confident) for a in got[1:]] == [
@@ -219,7 +219,7 @@ def test_remaining_fields_go_to_the_llm_in_one_call(profile, bank):
         (None, "llm", False),  # never filled in when unsure (D1)
     ]
     assert "'No'" in got[2].reason  # the suggestion is kept for review
-    assert resolver.gate(got) == ["Do you have relatives working at Acme?"]
+    assert resolver.gate(got) == ["Are you willing to work weekends?"]
 
 
 def test_llm_value_outside_options_is_rejected(profile, bank):
@@ -355,6 +355,7 @@ def test_optional_fields_never_reach_the_llm(profile, bank):
 
 
 def test_profile_value_that_fits_no_option_falls_through(profile, bank):
+    profile.education[0].degree_also = []
     bank.save("Highest degree", "Bachelor's")
     field = F("Highest degree", "select", options=["High school", "Bachelor's", "Master's"])
     [a] = run([field], profile, bank)  # profile says "Bachelor of Science": no option fits
@@ -386,3 +387,409 @@ def test_optional_salary_stays_blank_even_with_a_banked_answer(profile, bank):
     bank.save("Salary expectations", "150000")
     [a] = run([F("Salary expectations", required=False)], profile, bank)
     assert (a.value, a.source, a.confident) == (None, "preferences", True)
+
+
+# --- labels as the Greenhouse engine reads them (T7) ---
+
+
+def test_greenhouse_city_location_gets_city_and_state(profile, bank):
+    [a] = run([F("Location (City)", kind="select")], profile, bank)
+    assert (a.value, a.source) == ("Kansas City, MO", "profile")
+
+
+def test_greenhouse_phone_country_dropdown_gets_the_profile_country(profile, bank):
+    [a] = run([F("Country", kind="select")], profile, bank)
+    assert a.value == "United States"
+
+
+def test_employment_section_company_and_title_come_from_the_current_job(profile, bank):
+    company, title = run([F("Employment: Company name"), F("Employment: Title")], profile, bank)
+    assert (company.value, title.value) == ("Example Corp", "Software Engineer")
+
+
+def test_employment_start_date_is_never_the_preferred_start_date(profile, bank):
+    model = FakeLLM(llm_says((0, "June", False)))
+    [a] = run([F("Employment: Start date month", kind="select")], profile, bank, model)
+    assert a.source != "preferences"
+    assert a.value != "Two weeks after offer"
+
+
+def test_education_section_dropdowns_without_options_get_the_profile_value(profile, bank):
+    school, degree, discipline = run(
+        [
+            F("Education: School", kind="select"),
+            F("Education: Degree", kind="select"),
+            F("Education: Discipline", kind="select"),
+        ],
+        profile,
+        bank,
+    )
+    assert school.value == "Example University"
+    assert degree.value == "Bachelor of Science"
+    assert discipline.value == "Computer Science"
+
+
+def test_military_service_is_not_an_export_control_question(profile, bank):
+    # "itar" (export control) used to match inside "military" and block the field for good.
+    label = "Please enter your relevant employment and military service above."
+    model = FakeLLM(llm_says((0, "Thank you", True)))
+    [a] = run([F(label, kind="select", options=["Thank you"])], profile, bank, model)
+    assert (a.value, a.source) == ("Thank you", "llm")
+
+
+def test_review_answer_beats_the_profile_for_dropdowns_with_unknown_options(profile, bank):
+    # Greenhouse's degree list says "Bachelor's Degree", the profile "Bachelor of Science".
+    # The owner picks the option once at review; that answer must win from then on.
+    bank.save("Education: Degree", "Bachelor's Degree")
+    [a] = run([F("Education: Degree", kind="select")], profile, bank)
+    assert (a.value, a.source) == ("Bachelor's Degree", "bank")
+
+
+def test_profile_still_beats_the_bank_when_the_options_are_known(profile, bank):
+    bank.save("Gender", "Female")
+    options = ["Decline To Self Identify", "Female", "Male"]
+    [a] = run([F("Gender", kind="select", options=options)], profile, bank)
+    assert a.source == "profile"
+
+
+def test_employment_current_role_is_ticked_for_the_profiles_current_job(profile, bank):
+    [a] = run([F("Employment: Current role", kind="checkbox", required=False)], profile, bank)
+    assert (a.value, a.source) == ("Yes", "profile")
+
+
+# --- work authorization: option sentences the owner approved in the profile (option A) ---
+
+SEATGEEK_AUTH = [
+    "Yes, I have US work authorization as a US Citizen or US Permanent Resident/Green Card Holder",
+    "Yes, I have US Work authorization via a non-immigrant visa (H-1B, L-1, F-1 OPT OR CPT, TN)",
+    "No, I am not currently authorized to work in the United States",
+]
+LYFT_AUTH = [
+    "I am authorized to work for any employer in the country in which this position is based.",
+    "I require/will require Lyft's sponsorship to obtain work authorization (e.g. H-1B, TN, etc.)",
+    "My status to work in the country in which this position is based is unknown.",
+]
+
+
+def approving(example_profile_data, write_profile, *sentences):
+    example_profile_data["work_authorization"]["approved_answers"] = list(sentences)
+    return load_profile(write_profile(example_profile_data))
+
+
+def test_an_approved_option_sentence_answers_a_work_authorization_question(
+    example_profile_data, write_profile, bank
+):
+    profile = approving(example_profile_data, write_profile, SEATGEEK_AUTH[1])
+    field = F(
+        "Are you currently authorized to work in the United States?", "select", True, SEATGEEK_AUTH
+    )
+    [a] = run([field], profile, bank)
+    assert (a.value, a.source, a.confident) == (SEATGEEK_AUTH[1], "profile", True)
+
+
+def test_approved_sentences_match_despite_case_and_punctuation(
+    example_profile_data, write_profile, bank
+):
+    approved = (
+        "i am authorized to work for any employer in the country in which this position is based"
+    )
+    profile = approving(example_profile_data, write_profile, approved)
+    [a] = run([F("Work Authorization", "select", True, LYFT_AUTH)], profile, bank)
+    assert a.value == LYFT_AUTH[0]
+
+
+def test_without_an_approved_sentence_the_long_options_still_block(profile, bank):
+    [a] = run([F("Work Authorization", "select", True, LYFT_AUTH)], profile, bank)
+    assert a.value is None and not a.confident
+
+
+def test_two_approved_sentences_on_one_question_block_rather_than_pick(
+    example_profile_data, write_profile, bank
+):
+    profile = approving(example_profile_data, write_profile, *SEATGEEK_AUTH[:2])
+    field = F(
+        "Are you currently authorized to work in the United States?", "select", True, SEATGEEK_AUTH
+    )
+    [a] = run([field], profile, bank)
+    assert a.value is None and not a.confident
+
+
+def test_approved_sentences_never_answer_other_questions(example_profile_data, write_profile, bank):
+    profile = approving(example_profile_data, write_profile, "Yes")
+    model = FakeLLM(llm_says((0, "No", True)))
+    [a] = run([F("Do you enjoy hiking?", "select", True, YES_NO)], profile, bank, model)
+    assert a.source == "llm"
+
+
+# --- work authorization: the owner's own explanation for open-ended text questions ---
+
+EXPLANATION = "I am authorized to work in the US on F-1 OPT and in the green card process."
+
+
+def explaining(example_profile_data, write_profile):
+    example_profile_data["work_authorization"]["explanation"] = EXPLANATION
+    return load_profile(write_profile(example_profile_data))
+
+
+@pytest.mark.parametrize(
+    "label",
+    [
+        "If you're not authorized to work at the stated location, what sponsorship would you "
+        "require for the role?",
+        "Please describe your current work authorization status.",
+        "Explain your visa sponsorship needs, if any.",
+    ],
+)
+def test_open_ended_work_authorization_text_gets_the_owners_explanation(
+    example_profile_data, write_profile, bank, label
+):
+    profile = explaining(example_profile_data, write_profile)
+    [a] = run([F(label, "textarea", required=False)], profile, bank)
+    assert (a.value, a.source, a.confident) == (EXPLANATION, "profile", True)
+
+
+def test_yes_no_sponsorship_question_in_a_text_box_still_gets_no(
+    example_profile_data, write_profile, bank
+):
+    profile = explaining(example_profile_data, write_profile)
+    [a] = run([F("Do you require visa sponsorship?")], profile, bank)
+    assert a.value == "No"
+
+
+def test_visa_status_question_still_gets_the_visa_status(example_profile_data, write_profile, bank):
+    profile = explaining(example_profile_data, write_profile)
+    [a] = run([F("What is your current visa status?")], profile, bank)
+    assert a.value == "F-1 OPT"
+
+
+@pytest.mark.parametrize(
+    "label",
+    ["Are you a U.S. citizen?", "What is your citizenship?", "Describe your U.S. person status"],
+)
+def test_citizenship_questions_never_get_the_explanation(
+    example_profile_data, write_profile, bank, label
+):
+    profile = explaining(example_profile_data, write_profile)
+    [a] = run([F(label)], profile, bank)
+    assert a.value != EXPLANATION
+    assert not a.confident
+
+
+def test_dropdowns_never_get_the_explanation(example_profile_data, write_profile, bank):
+    profile = explaining(example_profile_data, write_profile)
+    [a] = run([F("Work Authorization", "select", True, LYFT_AUTH)], profile, bank)
+    assert a.value is None and not a.confident
+
+
+def test_without_an_explanation_open_ended_questions_keep_todays_answer(profile, bank):
+    label = "Please describe your current work authorization status."
+    [a] = run([F(label, "textarea")], profile, bank)
+    assert a.value == "Yes"
+
+
+def test_a_non_hyphen_prefix_is_not_a_negation():
+    # "non-immigrant" is not a "no": the F-1 option must stay reachable, and a bare "Yes"
+    # fits both "Yes" options, so it must not pick the citizen one.
+    field = F(
+        "Are you currently authorized to work in the United States?", "select", True, SEATGEEK_AUTH
+    )
+    assert resolver.match_option("F-1 OPT", field) == SEATGEEK_AUTH[1]
+    assert resolver.match_option("Yes", field) is None
+
+
+def test_degree_spellings_count_as_the_same_option(profile, bank):
+    profile.education[0].degree_also = []
+    field = F("Degree", "select", options=["High School", "Bachelor's Degree", "Master's Degree"])
+    profile.education[0].degree = "Bachelors"
+    [a] = run([field], profile, bank)
+    assert (a.value, a.source) == ("Bachelor's Degree", "profile")
+
+
+def test_the_first_listed_choice_the_form_offers_wins(profile, bank):
+    profile.education[0].major = "Information Technology"
+    profile.education[0].major_also = ["Computer Information Systems", "Computer Science"]
+    field = F("Discipline", "select", options=["Computer Science", "Computer Information Systems"])
+    [a] = run([field], profile, bank)
+    assert a.value == "Computer Information Systems"
+
+
+def test_a_type_to_search_dropdown_gets_every_choice_to_try_in_order(profile, bank):
+    profile.education[0].major = "Information Technology"
+    profile.education[0].major_also = ["Computer Science"]
+    [a] = run([F("Education: Discipline", "select", required=True)], profile, bank)
+    assert (a.value, a.alternatives, a.confident) == (
+        "Information Technology",
+        ["Computer Science"],
+        True,
+    )
+
+
+def test_a_review_answer_is_tried_before_the_profile_choices(profile, bank):
+    profile.education[0].major = "Information Technology"
+    profile.education[0].major_also = ["Computer Science"]
+    bank.save("Education: Discipline", "Computer Science")
+    [a] = run([F("Education: Discipline", "select", required=True)], profile, bank)
+    assert (a.value, a.source, a.alternatives) == (
+        "Computer Science",
+        "bank",
+        ["Information Technology"],
+    )
+
+
+def test_how_did_you_first_learn_about_us_is_a_preference(profile, bank):
+    [a] = run(
+        [F("How did you first learn about Affirm as an employer?", required=True)], profile, bank
+    )
+    assert (a.value, a.source) == ("Job board", "preferences")
+
+
+def test_heard_about_us_takes_the_first_choice_the_form_offers(profile, bank):
+    field = F("How did you hear about us?", "select", options=["LinkedIn", "Referral", "Other"])
+    [a] = run([field], profile, bank)
+    assert a.value == "Other"
+
+
+def test_pronouns_come_from_the_profile_not_the_gender_answer(profile, bank):
+    profile.demographics.pronouns = "He/Him"
+    field = F("Pronouns", "select", required=True, options=["She/Her", "He/Him", "They/Them"])
+    [a] = run([field], profile, bank)
+    assert (a.value, a.source) == ("He/Him", "profile")
+
+
+def test_no_pronouns_in_the_profile_leaves_the_question_for_review(profile, bank):
+    [a] = run([F("Please share your gender pronouns.", required=False)], profile, bank)
+    assert a.value is None
+
+
+def test_education_dates_come_from_start_and_graduation(profile, bank):
+    profile.education[0].start = "2020-08"
+    profile.education[0].graduation = "2024-05"
+    months = ["January", "May", "August"]
+    fields = [
+        F("Education: Start date month", "select", required=True, options=months),
+        F("Education: Start date year", required=True),
+        F("Education: End date month", "select", required=True),
+        F("Education: End date year", required=True),
+    ]
+    start_month, start_year, end_month, end_year = run(fields, profile, bank)
+    assert (start_month.value, start_year.value, end_year.value) == ("August", "2020", "2024")
+    assert (end_month.value, end_month.alternatives) == ("May", ["05", "5"])
+
+
+AFFIRM_STYLE = [
+    "I have not previously been employed at Acme",
+    "I have been employed at Acme as a full-time employee",
+    "I have been employed at Acme as a contractor or intern",
+]
+
+
+def test_worked_here_before_picks_the_negated_sentence_option(profile, bank):
+    q = F(
+        "Have you previously been employed at Acme for any length of time?",
+        "select",
+        options=AFFIRM_STYLE,
+    )
+    [a] = run([q], profile, bank)
+    assert (a.value, a.source) == ("I have not previously been employed at Acme", "profile")
+
+
+def test_worked_for_us_before_is_no_on_a_yes_no_question(profile, bank):
+    [a] = run([F("Have you ever worked for us before?", "select", options=YES_NO)], profile, bank)
+    assert a.value == "No"
+
+
+def test_a_past_employer_answers_yes(profile, bank):
+    profile.experience.past_employers = ["ACME"]
+    q = F("Have you ever been employed by Acme?", "select", options=YES_NO)
+    [a] = run([q], profile, bank)
+    assert a.value == "Yes"
+
+
+def test_several_yes_options_are_left_for_review(profile, bank):
+    profile.experience.past_employers = ["Acme"]
+    q = F("Have you previously been employed at Acme?", "select", options=AFFIRM_STYLE)
+    [a] = run([q], profile, bank, model=FakeLLM(llm_says((0, "x", False))))
+    assert not a.confident
+
+
+def test_worked_elsewhere_questions_are_not_about_this_company(profile, bank):
+    q = F("Have you previously worked in a startup?", "select", options=YES_NO)
+    [a] = run([q], profile, bank, model=FakeLLM(llm_says((0, "Yes", True))))
+    assert a.source == "llm"
+
+
+def test_relatives_at_the_company_is_no_unless_listed(profile, bank):
+    q = F(
+        "Are any of your immediate family members employees or directors of Acme or Acme "
+        "Health PLLC, including a spouse or partner living in same household?",
+        "select",
+        options=YES_NO,
+    )
+    [a] = run([q], profile, bank)
+    assert (a.value, a.source) == ("No", "profile")
+    profile.experience.family_employed_at = ["Acme"]
+    [a] = run([q], profile, bank)
+    assert a.value == "Yes"
+
+
+def test_relatives_question_as_free_text_says_no(profile, bank):
+    [a] = run([F("Do you have any relatives who work at Acme?")], profile, bank)
+    assert a.value == "No"
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "Are you located in the US?",
+        "Do you currently reside in the United States?",
+        "Are you based in the U.S.?",
+    ],
+)
+def test_living_in_the_us_comes_from_the_address(profile, bank, question):
+    [a] = run([F(question, "select", options=YES_NO)], profile, bank)
+    assert (a.value, a.source) == ("Yes", "profile")
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "Have you ever worked for a competitor of Acme?",
+        "Have you previously applied to work at Acme?",
+        "Have you previously worked in the US?",
+        "Have you ever worked with us as a vendor or client?",
+    ],
+)
+def test_near_miss_employment_questions_are_not_guessed(profile, bank, question):
+    q = F(question, "select", options=YES_NO)
+    [a] = run([q], profile, bank, model=FakeLLM(llm_says((0, "Yes", False))))
+    assert a.source != "profile"
+
+
+def test_where_in_the_us_wants_a_place_not_yes(profile, bank):
+    [a] = run([F("Where are you currently located in the US?")], profile, bank)
+    assert a.value == f"{profile.address.city}, {profile.address.state}"
+
+
+def test_dotted_country_counts_as_the_us(profile, bank):
+    profile.address.country = "U.S.A."
+    [a] = run([F("Are you located in the US?", "select", options=YES_NO)], profile, bank)
+    assert a.value == "Yes"
+
+
+def test_an_empty_heard_about_list_is_left_to_other_sources(profile, bank):
+    profile.preferences.heard_about_us = []
+    q = F("How did you hear about us?", "select", options=[])
+    [a] = run([q], profile, bank, model=FakeLLM(llm_says((0, "x", False))))
+    assert not a.confident
+
+
+def test_a_bare_graduation_year_answers_the_year_but_not_the_month(profile, bank):
+    profile.education[0].graduation = "2024"
+    year, month = run(
+        [F("Education: End date year"), F("Education: End date month")],
+        profile,
+        bank,
+        model=FakeLLM(llm_says((1, "May", False))),
+    )
+    assert year.value == "2024"
+    assert not month.confident

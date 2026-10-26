@@ -100,7 +100,7 @@ def parse_description(ats: ATS, payload: dict) -> str:
     raise Unsupported(f"no description parser for {ats}")
 
 
-def _get_json(url: str, timeout: float = 30) -> dict:
+def get_json(url: str, timeout: float = 30) -> dict:
     req = urllib.request.Request(
         url, headers={"User-Agent": "auto-job-applier", "Accept": "application/json"}
     )
@@ -108,7 +108,7 @@ def _get_json(url: str, timeout: float = 30) -> dict:
         return json.loads(resp.read().decode("utf-8"))
 
 
-def fetch_description(job: Job, get: Callable[[str], dict] = _get_json) -> str:
+def fetch_description(job: Job, get: Callable[[str], dict] = get_json) -> str:
     url = api_url(job)
     try:
         payload = get(url)

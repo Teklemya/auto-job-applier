@@ -1,0 +1,523 @@
+{
+ "success": true,
+ "errorCode": 10000,
+ "errorMsg": null,
+ "result": {
+  "jobList": [
+   {
+    "displayScore": 94.3,
+    "rankDesc": "Strong Match",
+    "isLiked": false,
+    "jobResult": {
+     "jobId": "6ac0448e372c01f6cd72b6bc",
+     "jobTitle": "SW Engineer",
+     "jobLocations": [
+      "Denver, CO"
+     ],
+     "isRemote": false,
+     "workModel": "Hybrid",
+     "publishTimeDesc": "49 minutes ago",
+     "originalUrl": "https://visa.wd5.myworkdayjobs.com/visa/job/US---Denver-CO/SW-Engineer_REF081049W",
+     "applyLink": "https://visa.wd5.myworkdayjobs.com/visa/job/US---Denver-CO/SW-Engineer_REF081049W",
+     "isCompanySiteLink": true,
+     "isCitizenOnly": false,
+     "isClearanceRequired": false,
+     "isH1bSponsor": true,
+     "isDeleted": false
+    },
+    "companyResult": {
+     "companyName": "Visa"
+    }
+   },
+   {
+    "displayScore": 92.3,
+    "rankDesc": "Strong Match",
+    "isLiked": false,
+    "jobResult": {
+     "jobId": "6ad2e2ebc4290cef1412d6b1",
+     "jobTitle": "Software Engineer",
+     "jobLocations": [
+      "San Francisco, CA"
+     ],
+     "isRemote": false,
+     "workModel": "Hybrid",
+     "publishTimeDesc": "23 hours ago",
+     "originalUrl": "https://job-boards.greenhouse.io/embed/job_app?for=lyft&token=8896679002",
+     "applyLink": "https://job-boards.greenhouse.io/embed/job_app?for=lyft&token=8896679002",
+     "isCompanySiteLink": true,
+     "isCitizenOnly": false,
+     "isClearanceRequired": false,
+     "isH1bSponsor": true,
+     "isDeleted": false
+    },
+    "companyResult": {
+     "companyName": "Lyft"
+    }
+   },
+   {
+    "displayScore": 86.8,
+    "rankDesc": "Strong Match",
+    "isLiked": false,
+    "jobResult": {
+     "jobId": "6a79fd2b9ee17f276dbf08cb",
+     "jobTitle": "Software Engineer",
+     "jobLocations": [
+      "United States"
+     ],
+     "isRemote": true,
+     "workModel": "Remote",
+     "publishTimeDesc": "7 hours ago",
+     "originalUrl": "https://job-boards.greenhouse.io/embed/job_app?for=mongodb&token=8065483",
+     "applyLink": "https://job-boards.greenhouse.io/embed/job_app?for=mongodb&token=8065483",
+     "isCompanySiteLink": true,
+     "isCitizenOnly": true,
+     "isClearanceRequired": false,
+     "isH1bSponsor": false,
+     "isDeleted": false
+    },
+    "companyResult": {
+     "companyName": "MongoDB"
+    }
+   },
+   {
+    "displayScore": 98.0,
+    "rankDesc": "Strong Match",
+    "isLiked": false,
+    "jobResult": {
+     "jobId": "6ad2be51810010ec72f59bbe",
+     "jobTitle": "Software Engineer",
+     "jobLocations": [
+      "Midvale, UT"
+     ],
+     "isRemote": false,
+     "workModel": "Onsite",
+     "publishTimeDesc": "5 hours ago",
+     "originalUrl": "https://zionsbancorp.referrals.selectminds.com/jobs/software-engineer-28961",
+     "applyLink": "https://zionsbancorp.referrals.selectminds.com/jobs/software-engineer-28961",
+     "isCompanySiteLink": true,
+     "isCitizenOnly": false,
+     "isClearanceRequired": false,
+     "isH1bSponsor": false,
+     "isDeleted": false
+    },
+    "companyResult": {
+     "companyName": "Zions Bancorporation"
+    }
+   },
+   {
+    "displayScore": 96.5,
+    "rankDesc": "Strong Match",
+    "isLiked": false,
+    "jobResult": {
+     "jobId": "6ad17439e2d41540d4a70d2a",
+     "jobTitle": "Software Engineer 1",
+     "jobLocations": [
+      "Mountain View, CA",
+      "San Diego, CA",
+      "New York, NY",
+      "Charlotte, NC",
+      "Atlanta, GA"
+     ],
+     "isRemote": false,
+     "workModel": "Onsite",
+     "publishTimeDesc": "1 day ago",
+     "originalUrl": "https://jobs.intuit.com/job/mountain-view/software-engineer-1/27595/102012325536",
+     "applyLink": "https://jobs.intuit.com/job/mountain-view/software-engineer-1/27595/102012325536",
+     "isCompanySiteLink": true,
+     "isCitizenOnly": false,
+     "isClearanceRequired": false,
+     "isH1bSponsor": true,
+     "isDeleted": false
+    },
+    "companyResult": {
+     "companyName": "Intuit"
+    }
+   },
+   {
+    "displayScore": 95.3,
+    "rankDesc": "Strong Match",
+    "isLiked": false,
+    "jobResult": {
+     "jobId": "6ad2b3ae5290d4375c454a0d",
+     "jobTitle": "Associate Software Engineer",
+     "jobLocations": [
+      "Chicago, IL"
+     ],
+     "isRemote": false,
+     "workModel": "Hybrid",
+     "publishTimeDesc": "22 hours ago",
+     "originalUrl": "https://morningstar.wd5.myworkdayjobs.com/morningstar/job/Chicago/Associate-Software-Engineer_REQ-058508-1",
+     "applyLink": "https://morningstar.wd5.myworkdayjobs.com/morningstar/job/Chicago/Associate-Software-Engineer_REQ-058508-1",
+     "isCompanySiteLink": true,
+     "isCitizenOnly": false,
+     "isClearanceRequired": false,
+     "isH1bSponsor": true,
+     "isDeleted": false
+    },
+    "companyResult": {
+     "companyName": "Morningstar"
+    }
+   },
+   {
+    "displayScore": 85.4,
+    "rankDesc": "Good Match",
+    "isLiked": false,
+    "jobResult": {
+     "jobId": "6ab691e79d4843569fe4dfbc",
+     "jobTitle": "Junior Java Developer",
+     "jobLocations": [
+      "United States"
+     ],
+     "isRemote": true,
+     "workModel": "Remote",
+     "publishTimeDesc": "1 day ago",
+     "originalUrl": "https://www.linkedin.com/jobs/view/4472026565",
+     "applyLink": "https://www.linkedin.com/jobs/view/4472026565",
+     "isCompanySiteLink": false,
+     "isCitizenOnly": false,
+     "isClearanceRequired": false,
+     "isH1bSponsor": true,
+     "isDeleted": false
+    },
+    "companyResult": {
+     "companyName": "Altimetrik"
+    }
+   },
+   {
+    "displayScore": 84.7,
+    "rankDesc": "Good Match",
+    "isLiked": false,
+    "jobResult": {
+     "jobId": "6ac7f02bfe8f33a85d4fe20d",
+     "jobTitle": "Software Engineer, Ads (Backend)",
+     "jobLocations": [
+      "Concord, MA",
+      "Cambridge, MA"
+     ],
+     "isRemote": false,
+     "workModel": "Hybrid",
+     "publishTimeDesc": "16 hours ago",
+     "originalUrl": "https://jobs.ashbyhq.com/kayak/85165d45-de15-444d-8a5e-b7fdb8f3cf1e/application",
+     "applyLink": "https://jobs.ashbyhq.com/kayak/85165d45-de15-444d-8a5e-b7fdb8f3cf1e/application",
+     "isCompanySiteLink": true,
+     "isCitizenOnly": false,
+     "isClearanceRequired": false,
+     "isH1bSponsor": true,
+     "isDeleted": false
+    },
+    "companyResult": {
+     "companyName": "KAYAK"
+    }
+   },
+   {
+    "displayScore": 92.4,
+    "rankDesc": "Strong Match",
+    "isLiked": false,
+    "jobResult": {
+     "jobId": "6ac7088c0e027c0f3b3b52de",
+     "jobTitle": "Software Engineer",
+     "jobLocations": [
+      "New York, NY"
+     ],
+     "isRemote": false,
+     "workModel": "Onsite",
+     "publishTimeDesc": "23 hours ago",
+     "originalUrl": "https://jobs.ashbyhq.com/pureapp/c37cdf2d-18a8-417e-b429-16875859a29a/application",
+     "applyLink": "https://jobs.ashbyhq.com/pureapp/c37cdf2d-18a8-417e-b429-16875859a29a/application",
+     "isCompanySiteLink": true,
+     "isCitizenOnly": false,
+     "isClearanceRequired": false,
+     "isH1bSponsor": true,
+     "isDeleted": false
+    },
+    "companyResult": {
+     "companyName": "Pure"
+    }
+   },
+   {
+    "displayScore": 92.1,
+    "rankDesc": "Strong Match",
+    "isLiked": false,
+    "jobResult": {
+     "jobId": "6ab56a72d85922de20ce0eba",
+     "jobTitle": "2027 University Graduate - Software Engineer",
+     "jobLocations": [
+      "San Jose, CA",
+      "San Francisco, CA",
+      "Austin, TX",
+      "Seattle, WA",
+      "Lehi, UT",
+      "New York, NY"
+     ],
+     "isRemote": false,
+     "workModel": "Onsite",
+     "publishTimeDesc": "3 hours ago",
+     "originalUrl": "https://adobe.wd5.myworkdayjobs.com/external_experienced/job/San-Jose/XMLNAME-2027-University-Graduate---Software-Engineer_R172083",
+     "applyLink": "https://adobe.wd5.myworkdayjobs.com/external_experienced/job/San-Jose/XMLNAME-2027-University-Graduate---Software-Engineer_R172083",
+     "isCompanySiteLink": true,
+     "isCitizenOnly": false,
+     "isClearanceRequired": false,
+     "isH1bSponsor": true,
+     "isDeleted": false
+    },
+    "companyResult": {
+     "companyName": "Adobe"
+    }
+   },
+   {
+    "displayScore": 89.6,
+    "rankDesc": "Strong Match",
+    "isLiked": false,
+    "jobResult": {
+     "jobId": "6ab296748254c44790e55d39",
+     "jobTitle": "New Grad Software Engineer",
+     "jobLocations": [
+      "New York, NY"
+     ],
+     "isRemote": false,
+     "workModel": "Onsite",
+     "publishTimeDesc": "2 days ago",
+     "originalUrl": "https://job-boards.greenhouse.io/embed/job_app?for=authenticinsurance&token=4114318009",
+     "applyLink": "https://job-boards.greenhouse.io/embed/job_app?for=authenticinsurance&token=4114318009",
+     "isCompanySiteLink": true,
+     "isCitizenOnly": false,
+     "isClearanceRequired": false,
+     "isH1bSponsor": true,
+     "isDeleted": false
+    },
+    "companyResult": {
+     "companyName": "Authentic"
+    }
+   },
+   {
+    "displayScore": 91.3,
+    "rankDesc": "Strong Match",
+    "isLiked": false,
+    "jobResult": {
+     "jobId": "6ad2bc67810010ec72f59b77",
+     "jobTitle": "Software Engineer",
+     "jobLocations": [
+      "Cambridge, MA"
+     ],
+     "isRemote": false,
+     "workModel": "Onsite",
+     "publishTimeDesc": "49 minutes ago",
+     "originalUrl": "https://apply.careers.microsoft.com/careers/job/1970393557038974/",
+     "applyLink": "https://apply.careers.microsoft.com/careers/job/1970393557038974/",
+     "isCompanySiteLink": true,
+     "isCitizenOnly": false,
+     "isClearanceRequired": false,
+     "isH1bSponsor": true,
+     "isDeleted": false
+    },
+    "companyResult": {
+     "companyName": "Microsoft"
+    }
+   },
+   {
+    "displayScore": 95.5,
+    "rankDesc": "Strong Match",
+    "isLiked": false,
+    "jobResult": {
+     "jobId": "6ad31f6f25289a0b3bf59cf6",
+     "jobTitle": "Software Engineer",
+     "jobLocations": [
+      "United States"
+     ],
+     "isRemote": true,
+     "workModel": "Remote",
+     "publishTimeDesc": "19 hours ago",
+     "originalUrl": "https://www.linkedin.com/jobs/view/4480825056",
+     "applyLink": "https://www.linkedin.com/jobs/view/4480825056",
+     "isCompanySiteLink": false,
+     "isCitizenOnly": false,
+     "isClearanceRequired": false,
+     "isH1bSponsor": true,
+     "isDeleted": false
+    },
+    "companyResult": {
+     "companyName": "Zetheta Algorithms Private Limited"
+    }
+   },
+   {
+    "displayScore": 90.6,
+    "rankDesc": "Strong Match",
+    "isLiked": false,
+    "jobResult": {
+     "jobId": "6ac0178a8ff3fb9b3bc7aa0d",
+     "jobTitle": "Software Engineer",
+     "jobLocations": [
+      "United States"
+     ],
+     "isRemote": true,
+     "workModel": "Remote",
+     "publishTimeDesc": "3 days ago",
+     "originalUrl": "https://careers.zelis.com/us/en/job/JR111789/software-engineer",
+     "applyLink": "https://careers.zelis.com/us/en/job/JR111789/software-engineer",
+     "isCompanySiteLink": true,
+     "isCitizenOnly": false,
+     "isClearanceRequired": false,
+     "isH1bSponsor": false,
+     "isDeleted": false
+    },
+    "companyResult": {
+     "companyName": "Zelis"
+    }
+   },
+   {
+    "displayScore": 88.6,
+    "rankDesc": "Strong Match",
+    "isLiked": false,
+    "jobResult": {
+     "jobId": "6acfca40fe7a9bd5a6b9a03b",
+     "jobTitle": "Software Engineer (new grad)",
+     "jobLocations": [
+      "New York, NY"
+     ],
+     "isRemote": false,
+     "workModel": "Onsite",
+     "publishTimeDesc": "3 days ago",
+     "originalUrl": "https://www.ycombinator.com/companies/margin/jobs/cT2azkX-software-engineer-new-grad",
+     "applyLink": "https://www.ycombinator.com/companies/margin/jobs/cT2azkX-software-engineer-new-grad",
+     "isCompanySiteLink": true,
+     "isCitizenOnly": false,
+     "isClearanceRequired": false,
+     "isH1bSponsor": false,
+     "isDeleted": false
+    },
+    "companyResult": {
+     "companyName": "Margin"
+    }
+   },
+   {
+    "displayScore": 95.3,
+    "rankDesc": "Strong Match",
+    "isLiked": false,
+    "jobResult": {
+     "jobId": "6a9740b8f5337b2cf7321234",
+     "jobTitle": "Software Engineer New Grad",
+     "jobLocations": [
+      "New York, NY",
+      "San Francisco, CA"
+     ],
+     "isRemote": false,
+     "workModel": "Onsite",
+     "publishTimeDesc": "3 days ago",
+     "originalUrl": "https://jobs.ashbyhq.com/valon/e08ad09a-4408-4210-8c1b-da6510f83324/application",
+     "applyLink": "https://jobs.ashbyhq.com/valon/e08ad09a-4408-4210-8c1b-da6510f83324/application",
+     "isCompanySiteLink": true,
+     "isCitizenOnly": false,
+     "isClearanceRequired": false,
+     "isH1bSponsor": true,
+     "isDeleted": false
+    },
+    "companyResult": {
+     "companyName": "Valon"
+    }
+   },
+   {
+    "displayScore": 92.5,
+    "rankDesc": "Strong Match",
+    "isLiked": false,
+    "jobResult": {
+     "jobId": "6a96fba4f5337b2cf731f09e",
+     "jobTitle": "Software Engineer, Backend",
+     "jobLocations": [
+      "Seattle, WA"
+     ],
+     "isRemote": false,
+     "workModel": "Onsite",
+     "publishTimeDesc": "2 days ago",
+     "originalUrl": "https://jobs.ashbyhq.com/plaid/664df3be-6be0-432f-8a35-ec7af986fd0d/application",
+     "applyLink": "https://jobs.ashbyhq.com/plaid/664df3be-6be0-432f-8a35-ec7af986fd0d/application",
+     "isCompanySiteLink": true,
+     "isCitizenOnly": false,
+     "isClearanceRequired": false,
+     "isH1bSponsor": true,
+     "isDeleted": false
+    },
+    "companyResult": {
+     "companyName": "Plaid"
+    }
+   },
+   {
+    "displayScore": 88.4,
+    "rankDesc": "Strong Match",
+    "isLiked": false,
+    "jobResult": {
+     "jobId": "6aab167476707040fb084199",
+     "jobTitle": "Software Engineer II, Backend",
+     "jobLocations": [
+      "San Francisco, CA",
+      "New York, NY",
+      "Seattle, WA"
+     ],
+     "isRemote": false,
+     "workModel": "Hybrid",
+     "publishTimeDesc": "3 days ago",
+     "originalUrl": "https://job-boards.greenhouse.io/embed/job_app?for=brex&token=8815438002",
+     "applyLink": "https://job-boards.greenhouse.io/embed/job_app?for=brex&token=8815438002",
+     "isCompanySiteLink": true,
+     "isCitizenOnly": false,
+     "isClearanceRequired": false,
+     "isH1bSponsor": true,
+     "isDeleted": false
+    },
+    "companyResult": {
+     "companyName": "Brex"
+    }
+   },
+   {
+    "displayScore": 96.8,
+    "rankDesc": "Strong Match",
+    "isLiked": false,
+    "jobResult": {
+     "jobId": "6ac6d3d98ff3fb9b3bc8f5d1",
+     "jobTitle": "Software Developer - Officer",
+     "jobLocations": [
+      "Quincy, MA",
+      "Princeton, NJ"
+     ],
+     "isRemote": false,
+     "workModel": "Hybrid",
+     "publishTimeDesc": "1 day ago",
+     "originalUrl": "https://statestreet.wd1.myworkdayjobs.com/equest/job/Quincy-Massachusetts/Software-Developer---Officer_R-798966",
+     "applyLink": "https://statestreet.wd1.myworkdayjobs.com/equest/job/Quincy-Massachusetts/Software-Developer---Officer_R-798966",
+     "isCompanySiteLink": true,
+     "isCitizenOnly": false,
+     "isClearanceRequired": false,
+     "isH1bSponsor": true,
+     "isDeleted": false
+    },
+    "companyResult": {
+     "companyName": "State Street"
+    }
+   },
+   {
+    "displayScore": 91.0,
+    "rankDesc": "Strong Match",
+    "isLiked": false,
+    "jobResult": {
+     "jobId": "6ad3e9efebd52f378af8c882",
+     "jobTitle": "Software Engineer I(Affirm)",
+     "jobLocations": [
+      "United States"
+     ],
+     "isRemote": true,
+     "workModel": "Remote",
+     "publishTimeDesc": "5 hours ago",
+     "originalUrl": "https://app.hirelayer.ai/job/32347b23-11d1-44cb-880e-b321c2d727cb",
+     "applyLink": "https://app.hirelayer.ai/job/32347b23-11d1-44cb-880e-b321c2d727cb",
+     "isCompanySiteLink": true,
+     "isCitizenOnly": false,
+     "isClearanceRequired": false,
+     "isH1bSponsor": true,
+     "isDeleted": false
+    },
+    "companyResult": {
+     "companyName": "ScoutBetter"
+    }
+   }
+  ]
+ }
+}

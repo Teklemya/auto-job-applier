@@ -1,0 +1,90 @@
+{
+ "success": true,
+ "errorCode": 10000,
+ "errorMsg": null,
+ "result": {
+  "total": "3",
+  "hasMore": false,
+  "list": [
+   {
+    "displayScore": 96.5,
+    "rankDesc": "Strong Match",
+    "isLiked": true,
+    "jobResult": {
+     "jobId": "6ad17439e2d41540d4a70d2a",
+     "jobTitle": "Software Engineer 1",
+     "jobLocations": [
+      "Mountain View, CA",
+      "San Diego, CA",
+      "New York, NY",
+      "Charlotte, NC",
+      "Atlanta, GA"
+     ],
+     "isRemote": false,
+     "workModel": "Onsite",
+     "publishTimeDesc": "1 day ago",
+     "originalUrl": "https://jobs.intuit.com/job/mountain-view/software-engineer-1/27595/102012325536",
+     "applyLink": "https://jobs.intuit.com/job/mountain-view/software-engineer-1/27595/102012325536",
+     "isCompanySiteLink": true,
+     "isCitizenOnly": false,
+     "isClearanceRequired": false,
+     "isH1bSponsor": true,
+     "isDeleted": false
+    },
+    "companyResult": {
+     "companyName": "Intuit"
+    }
+   },
+   {
+    "displayScore": 92.3,
+    "rankDesc": "Strong Match",
+    "isLiked": true,
+    "jobResult": {
+     "jobId": "6ad2e2ebc4290cef1412d6b1",
+     "jobTitle": "Software Engineer",
+     "jobLocations": [
+      "San Francisco, CA"
+     ],
+     "isRemote": false,
+     "workModel": "Hybrid",
+     "publishTimeDesc": "23 hours ago",
+     "originalUrl": "https://job-boards.greenhouse.io/embed/job_app?for=lyft&token=8896679002",
+     "applyLink": "https://job-boards.greenhouse.io/embed/job_app?for=lyft&token=8896679002",
+     "isCompanySiteLink": true,
+     "isCitizenOnly": false,
+     "isClearanceRequired": false,
+     "isH1bSponsor": true,
+     "isDeleted": false
+    },
+    "companyResult": {
+     "companyName": "Lyft"
+    }
+   },
+   {
+    "displayScore": 94.3,
+    "rankDesc": "Strong Match",
+    "isLiked": true,
+    "jobResult": {
+     "jobId": "6ac0448e372c01f6cd72b6bc",
+     "jobTitle": "SW Engineer",
+     "jobLocations": [
+      "Denver, CO"
+     ],
+     "isRemote": false,
+     "workModel": "Hybrid",
+     "publishTimeDesc": "57 minutes ago",
+     "originalUrl": "https://visa.wd5.myworkdayjobs.com/visa/job/US---Denver-CO/SW-Engineer_REF081049W",
+     "applyLink": "https://visa.wd5.myworkdayjobs.com/visa/job/US---Denver-CO/SW-Engineer_REF081049W",
+     "isCompanySiteLink": true,
+     "isCitizenOnly": false,
+     "isClearanceRequired": false,
+     "isH1bSponsor": true,
+     "isDeleted": false
+    },
+    "companyResult": {
+     "companyName": "Visa"
+    }
+   }
+  ]
+ }
+}

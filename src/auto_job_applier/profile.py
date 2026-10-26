@@ -4,11 +4,19 @@ Every model forbids unknown keys so a typo in profile.yaml fails loudly instead 
 falling back to a default (a misspelled sponsorship key must never become a wrong answer).
 """
 
+import re
 from pathlib import Path
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import (
+    AliasChoices,
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+)
 
 from . import paths
 
@@ -49,20 +57,73 @@ class WorkAuthorization(_Strict):
     requires_sponsorship_now: bool
     requires_sponsorship_future: bool
     visa_status: str | None = None  # e.g. "F-1 OPT"; only used if a form asks directly
+    # Exact option sentences the owner approved for questions whose options aren't Yes/No,
+    # e.g. "I am authorized to work for any employer in the country ...". Used verbatim.
+    approved_answers: list[str] = []
+    # The owner's own words for open-ended text questions ("what sponsorship would you
+    # require?", "describe your work authorization"). Never used for dropdowns or citizenship.
+    explanation: str | None = None
+
+
+_DATE_FORMATS = [
+    (re.compile(r"^(\d{4})[-/](\d{1,2})(?:[-/]\d{1,2})?$"), lambda m: (m[1], m[2])),  # 2022-08(-21)
+    (re.compile(r"^(\d{1,2})[-/]\d{1,2}[-/](\d{4})$"), lambda m: (m[2], m[1])),  # 08-21-2022
+    (re.compile(r"^(\d{1,2})[-/](\d{4})$"), lambda m: (m[2], m[1])),  # 08/2022
+    (re.compile(r"^(\d{1,2})[-/](\d{2})$"), lambda m: ("20" + m[2], m[1])),  # 08-22
+]
+
+
+_MONTH_NAME = re.compile(r"^([a-z]{3,9})\.?,? (\d{4})$|^(\d{4}),? ([a-z]{3,9})\.?$", re.I)
+_MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
+
+
+def to_year_month(text: str) -> str:
+    """A date in any common order, as "YYYY-MM"; a bare year stays "YYYY" (month unknown)."""
+    text = text.strip()
+    if re.fullmatch(r"\d{4}", text):
+        return text
+    if m := _MONTH_NAME.match(text):
+        name, year = (m[1], m[2]) if m[1] else (m[4], m[3])
+        if name[:3].lower() in _MONTHS:
+            return f"{year}-{_MONTHS.index(name[:3].lower()) + 1:02d}"
+    for pattern, parts in _DATE_FORMATS:
+        if m := pattern.match(text):
+            year, month = parts(m)
+            if 1 <= int(month) <= 12:
+                return f"{year}-{int(month):02d}"
+    raise ValueError(f"{text!r} is not a date like 2022-08, 2022-08-21, 08/2022 or May 2022")
 
 
 class Education(_Strict):
     school: str
     degree: str  # e.g. "Bachelor of Science"
     major: str
-    graduation: str  # "YYYY-MM"
+    # Other spellings or close choices, tried in order when a form's dropdown doesn't offer
+    # the value above, e.g. degree_also: ["Bachelor's Degree", "Bachelor"]. The LLM only ever
+    # sees the values above.
+    school_also: list[str] = []
+    degree_also: list[str] = []
+    major_also: list[str] = []
+    # Dates are stored as "YYYY-MM"; "2022-08-21", "08/2022", "08-21-2022", "08-22" and
+    # "Aug 2022" work too. A bare year ("2024") is kept, and month questions go to review.
+    start: str | None = Field(None, validation_alias=AliasChoices("start", "start_date"))
+    graduation: str = Field(validation_alias=AliasChoices("graduation", "end_date"))
     gpa: str | None = None
+
+    @field_validator("start", "graduation", mode="before")
+    @classmethod
+    def _year_month(cls, v: object) -> object:
+        return None if v is None else to_year_month(str(v))
 
 
 class Experience(_Strict):
     current_company: str | None = None
     current_title: str | None = None
     years_experience: float = 0
+    # Companies you have worked for before, for "have you previously worked at X?" questions.
+    past_employers: list[str] = []
+    # Companies where immediate family works, for "are any of your relatives employees of X?".
+    family_employed_at: list[str] = []
 
 
 class Demographics(_Strict):
@@ -73,11 +134,13 @@ class Demographics(_Strict):
     hispanic_latino: str = DECLINE
     veteran_status: str = DECLINE
     disability_status: str = DECLINE
+    pronouns: str | None = None  # e.g. "He/Him"; left empty, a required question goes to review
 
 
 class Preferences(_Strict):
     start_date: str = "Two weeks after offer"
-    heard_about_us: str = "Job board"
+    # One answer, or choices tried in order until the form offers one.
+    heard_about_us: str | list[str] = ["Job board", "Online job board", "Job posting", "Other"]
     salary_floor: int = 120_000  # never answer below this (R12)
     willing_to_relocate: bool = True
 
