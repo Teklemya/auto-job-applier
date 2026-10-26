@@ -11,7 +11,7 @@ from typing import Annotated
 
 import typer
 
-from . import browser, paths, review
+from . import browser, inbox, paths, review
 from .answers.bank import AnswerBank
 from .answers.resolver import is_work_auth
 from .answers.writer import make_writer
@@ -63,6 +63,25 @@ def login() -> None:
         typer.echo(str(e), err=True)
         raise typer.Exit(1) from e
     typer.echo(f"Saved logins in {paths.browser_profile_dir()}")
+
+
+@app.command("login-mail")
+def login_mail() -> None:
+    """Store a Gmail app password in the Keychain so submits can read Greenhouse's emailed
+    security codes. Create one at https://myaccount.google.com/apppasswords."""
+    try:
+        account = load_profile(paths.profile_path()).contact.email
+    except ProfileError as e:
+        typer.echo(str(e), err=True)
+        raise typer.Exit(1) from e
+    password = typer.prompt(f"App password for {account}", hide_input=True).replace(" ", "")
+    try:
+        inbox.GmailCodes(account, password).check()
+    except Exception as e:
+        typer.echo(f"Gmail refused the sign-in ({e}). Nothing was saved.", err=True)
+        raise typer.Exit(1) from e
+    inbox.save_app_password(account, password)
+    typer.echo(f"Saved in the Keychain (service {inbox.KEYCHAIN_SERVICE}). Codes are read only.")
 
 
 @app.command()
@@ -287,6 +306,12 @@ def _submits_left(profile: Profile, store: JobStore) -> int:
 CODE_WAIT_MS = 5 * 60_000  # time to type an emailed security code at `aja apply`
 
 
+def _codes(profile: Profile) -> inbox.GmailCodes | None:
+    """The inbox reader for emailed security codes, once `aja login-mail` stored a password."""
+    password = inbox.app_password(profile.contact.email)
+    return inbox.GmailCodes(profile.contact.email, password) if password else None
+
+
 def _apply_one(
     store: JobStore,
     profile: Profile,
@@ -294,6 +319,7 @@ def _apply_one(
     job: Job,
     retry: bool = False,
     watched: bool = False,
+    codes: inbox.GmailCodes | None = None,
 ) -> Packet:
     """Fill one Greenhouse job; submit it if live mode and the cap allow, else stage a draft.
     A job whose Submit was clicked before (a security code, a rejected page) may already be
@@ -307,6 +333,7 @@ def _apply_one(
         store.save_description(job.id, jd)
     with _greenhouse_session(job) as session:
         session.code_wait_ms = CODE_WAIT_MS if watched else 0
+        session.codes = codes
         return stage(
             job,
             session,
@@ -358,7 +385,8 @@ def apply_job(
                 "(the page waits up to 5 minutes)."
             )
         model = make_llm(profile, store, "answers")
-        packet = _apply_one(store, profile, model, job, retry=retry, watched=True)
+        codes = _codes(profile) if profile.settings.submit else None
+        packet = _apply_one(store, profile, model, job, retry=retry, watched=True, codes=codes)
         job = store.get(job_id)
     except (ProfileError, LLMError, FetchError, PostingClosed, Unsupported) as e:
         typer.echo(str(e), err=True)
@@ -402,10 +430,13 @@ def run(
         except LLMError as e:
             typer.echo(str(e), err=True)
             raise typer.Exit(1) from e
+        # One reader for the whole run: a code is never used twice. Submits wait for their
+        # code one at a time, so back-to-back jobs at one company can't swap codes.
+        codes = _codes(profile) if profile.settings.submit else None
         for job in store.apply_queue(ATS.GREENHOUSE, limit):
             assert job.id is not None
             try:
-                _apply_one(store, profile, model, job)
+                _apply_one(store, profile, model, job, codes=codes)
             except PostingClosed as e:
                 store.set_status(job.id, Status.SKIPPED, f"posting closed: {e}")
             except (FetchError, Unsupported) as e:

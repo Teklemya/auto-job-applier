@@ -12,6 +12,7 @@ import html as html_lib
 import random
 import re
 from collections.abc import Callable
+from datetime import UTC, datetime
 from html.parser import HTMLParser
 from pathlib import Path
 
@@ -223,12 +224,14 @@ SUBMIT_WAIT_MS = 30_000
 class GreenhouseSession:
     """The application form open in the tool's browser (see apply.FormSession)."""
 
-    def __init__(self, page, api: dict | None):
-        self.page, self.api = page, api
+    def __init__(self, page, api: dict | None, company: str = ""):
+        self.page, self.api, self.company = page, api, company
         self.picked: dict[str, str] = {}  # dom id → the option chosen in a type-to-search box
         self.offered: dict[str, list[str]] = {}  # dom id → options seen there while typing
         # How long to wait for the owner to type an emailed security code; 0 = unattended.
         self.code_wait_ms = 0
+        # Reads the emailed code for (company, Submit click time); None = no inbox access.
+        self.codes: Callable[[str, datetime], str | None] | None = None
 
     @classmethod
     def open(cls, page, job: Job, api: dict | None) -> "GreenhouseSession":
@@ -236,7 +239,7 @@ class GreenhouseSession:
         # No form (a closed posting or a changed page) leaves fields() empty → NO_FORM.
         with contextlib.suppress(Exception):
             page.wait_for_selector(FORM_READY, timeout=30_000)
-        return cls(page, api)
+        return cls(page, api, job.company)
 
     def _box(self, dom_id: str):
         return self.page.locator(f"[id='{dom_id}']")
@@ -314,12 +317,14 @@ class GreenhouseSession:
         return [t.strip() for t in self.page.locator(_ERRORS).all_inner_texts() if t.strip()]
 
     def submit(self) -> SubmitResult:
-        """Click Submit and watch the page. When an emailed security code is asked for and
-        `code_wait_ms` is set, keep the page open that long for the owner to type it."""
+        """Click Submit and watch the page. When an emailed security code is asked for, read
+        it from the inbox (`codes`) and type it; failing that, keep the page open
+        `code_wait_ms` for the owner to type it."""
         before = set(self._errors())  # banners and notices already on the page aren't errors
         code_before = bool(_SECURITY_CODE.search(self.page.inner_text("body")))
+        clicked_at = datetime.now(UTC)
         self.page.locator(SUBMIT_BUTTON).last.click()
-        ticks, waiting_for_code = SUBMIT_WAIT_MS // 500, False
+        ticks, code_handled = SUBMIT_WAIT_MS // 500, False
         while ticks > 0:
             ticks -= 1
             self.page.wait_for_timeout(500)
@@ -331,16 +336,35 @@ class GreenhouseSession:
                 outcome = submit_outcome(self.page.url, body, new, showing, code)
                 if outcome is None:
                     continue
-                if outcome.problems == [CODE_ASKED] and self.code_wait_ms:
-                    if not waiting_for_code:
-                        waiting_for_code, ticks = True, self.code_wait_ms // 500
-                    continue
-                return outcome
-        if waiting_for_code:
+                if outcome.problems != [CODE_ASKED] or code_handled:
+                    if outcome.problems == [CODE_ASKED]:
+                        continue  # still on the code page: wait out the time given
+                    return outcome
+                code_handled = True
+                if self.codes and (emailed := self.codes(self.company, clicked_at)):
+                    self._enter_code(emailed)
+                    ticks = SUBMIT_WAIT_MS // 500
+                elif self.code_wait_ms:
+                    ticks = self.code_wait_ms // 500
+                else:
+                    return outcome
+        if code_handled:
             return SubmitResult(False, [CODE_ASKED])
         if self.page_blockers():  # a challenge after the click: nothing was sent yet
             return SubmitResult(False, ["CAPTCHA after Submit: solve it at review"])
         return SubmitResult(confirmed=False)
+
+    def _enter_code(self, code: str) -> None:
+        """Type the code into Greenhouse's one-character boxes (or a single field), then
+        submit again if the button is still there."""
+        boxes = self.page.locator("input[maxlength='1']:visible")
+        if boxes.count() >= len(code):
+            boxes.first.click()
+            self.page.keyboard.type(code, delay=80)
+        else:
+            self.page.get_by_label(re.compile("security code", re.I)).first.fill(code)
+        with contextlib.suppress(Exception):  # some boards submit as soon as the code is full
+            self.page.locator(SUBMIT_BUTTON).last.click(timeout=3_000)
 
     def highlight(self, dom_ids: list[str]) -> None:
         """Outline fields for the owner at review."""

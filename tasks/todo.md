@@ -34,6 +34,10 @@ Every task: `ruff check . && pytest` passes, plus its manual check.
 - [x] Greenhouse-first re-scope (2026-10-24): `aja run --limit N` (collect → screen → fit → apply the best
   Greenhouse jobs, then a summary with new fillable jobs per ATS) and the T10 submit path for Greenhouse
   were pulled ahead of T8/T9. T8 and T9 wait for a few days of supply numbers from `aja run`
+- [x] Emailed security codes (2026-10-26): Greenhouse asks for an 8-character code after Submit.
+  `inbox.py` reads it from Gmail over IMAP (app password in the Keychain via `aja login-mail`,
+  read only, Greenhouse sender + company + after the click), and submits wait for their code one
+  at a time. Left: first live run with the reader on
 - [ ] T8 Lever engine. From the T7 review: pick the engine by ATS (CLI hard-codes Greenhouse) and add `highlight` to `FormSession`
 - [ ] T9a Workday auth (D11): Google first, else Keychain password; `ats_accounts` table; verification wall → STAGED + notify, resend when stale
 - [ ] T9b Workday wizard + native draft: reach Review; gate fail → Save for later
