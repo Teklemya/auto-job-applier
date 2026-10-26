@@ -24,6 +24,7 @@ from html.parser import HTMLParser
 from .answers.bank import normalize
 
 IMAP_HOST = "imap.gmail.com"
+MAILBOX = '"[Gmail]/All Mail"'  # every message, even one archived or filtered out of the inbox
 KEYCHAIN_SERVICE = "auto-job-applier-gmail"
 SENDER = "greenhouse-mail.io"
 CODE_TIMEOUT_S = 4 * 60  # Greenhouse codes can take a couple of minutes to arrive
@@ -57,23 +58,27 @@ def _text_lines(msg: EmailMessage) -> list[str]:
     return lines
 
 
-def code_in(msg: EmailMessage, company: str, since: datetime) -> str | None:
-    """The 8-character code in a Greenhouse security-code email for `company` that arrived
-    at or after `since`, else None. The code stands on a line of its own."""
+def check(msg: EmailMessage, company: str, since: datetime) -> tuple[str | None, str]:
+    """(code, "ok") for a Greenhouse security-code email for `company` that arrived at or
+    after `since`, else (None, why not). The code stands on a line of its own."""
     if SENDER not in (msg.get("From") or "").lower():
-        return None
+        return None, "not from Greenhouse"
     subject = normalize(msg.get("Subject") or "")
-    if (
-        "security code" not in subject
-        or not normalize(company)
-        or normalize(company) not in subject
-    ):
-        return None
+    if "security code" not in subject:
+        return None, "not a security code email"
+    if not normalize(company) or normalize(company) not in subject:
+        return None, f"for another company, not {company}"
     sent = msg.get("Date")
     if sent is None or parsedate_to_datetime(sent) < since - CLOCK_SKEW:
-        return None
+        return None, "sent before the Submit click"
     codes = {line for line in _text_lines(msg) if _CODE_LINE.match(line)}
-    return codes.pop() if len(codes) == 1 else None
+    if len(codes) != 1:
+        return None, f"{len(codes)} code-like lines in the body, expected 1"
+    return codes.pop(), "ok"
+
+
+def code_in(msg: EmailMessage, company: str, since: datetime) -> str | None:
+    return check(msg, company, since)[0]
 
 
 def pick_code(
@@ -131,11 +136,13 @@ class GmailCodes:
 
     @contextlib.contextmanager
     def _inbox(self) -> Iterator[imaplib.IMAP4]:
-        """Signed in, INBOX opened read-only."""
+        """Signed in, All Mail (or INBOX) opened read-only."""
         imap = self.connect()
         try:
             imap.login(self.account, self.password)
-            imap.select("INBOX", readonly=True)
+            status, _ = imap.select(MAILBOX, readonly=True)
+            if status != "OK":  # a non-English Gmail names All Mail differently
+                imap.select("INBOX", readonly=True)
             yield imap
         finally:
             with contextlib.suppress(Exception):  # already closed
@@ -157,6 +164,15 @@ class GmailCodes:
                 msg = email.message_from_bytes(raw, policy=email.policy.default)
                 messages.append((msg.get("Message-ID") or num.decode(), msg))
             return messages
+
+    def explain(self, company: str, since: datetime) -> list[str]:
+        """What the reader sees, one line per recent Greenhouse email (codes masked)."""
+        lines = []
+        for _, msg in self._recent(since.astimezone(UTC)):
+            code, why = check(msg, company, since.astimezone(UTC))
+            shown = f"code {code[:2]}******" if code else why
+            lines.append(f"{msg.get('Date')} | {msg.get('Subject')} | {shown}")
+        return lines or [f"no mail from {SENDER} since {since:%Y-%m-%d}"]
 
     def __call__(self, company: str, since: datetime) -> str | None:
         if normalize(company) in self.missed:

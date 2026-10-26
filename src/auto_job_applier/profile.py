@@ -110,6 +110,8 @@ class Experience(_Strict):
     years_experience: float = 0
     # Companies you have worked for before, for "have you previously worked at X?" questions.
     past_employers: list[str] = []
+    # Companies where immediate family works, for "are any of your relatives employees of X?".
+    family_employed_at: list[str] = []
 
 
 class Demographics(_Strict):

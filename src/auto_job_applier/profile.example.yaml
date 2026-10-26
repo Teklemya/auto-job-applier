@@ -52,6 +52,7 @@ experience:
   current_title: Software Engineer
   years_experience: 1
   past_employers: []  # e.g. [Acme Corp]; "Have you worked at X before?" is No for anyone else
+  family_employed_at: []  # "Do any relatives work at X?" is No unless X is listed here
 
 # Voluntary self-identification. Each value is answered verbatim when a form asks.
 demographics:

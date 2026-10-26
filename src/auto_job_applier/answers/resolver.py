@@ -41,6 +41,10 @@ _WORKED_HERE = re.compile(
     r"(previously|ever|formerly|before|in the past)\b.*\b(employed|worked|work)\b"
     r"|\b(employed|worked)\b.*\b(before|previously|in the past)\b|former employee"
 )
+_FAMILY_THERE = re.compile(
+    r"\b(family|relatives?|related to|spouse|household)\b.*\b(employ\w*|work\w*|director\w*)\b"
+    r"|\b(employ\w*|work\w*)\b.*\b(family|relatives?|related to)\b"
+)
 _NEGATIONS = {"no", "not", "non", "never", "don", "dont", "doesn", "isn", "aren", "won"}
 _DECLINE_OPTION = re.compile(
     r"decline|not wish|don ?t wish|prefer not|choose not|not to (say|answer)"
@@ -147,10 +151,17 @@ def _by_polarity(options: list[str], yes: bool) -> str | None:
     return hits[0] if len(hits) == 1 else None
 
 
-def _worked_at(job: Job, p: Profile) -> bool:
-    e = p.experience
-    worked = [normalize(c) for c in [*e.past_employers, e.current_company or ""] if c]
-    return normalize(job.company) in worked
+def _tie_to_company(label: str, job: Job, p: Profile) -> bool | None:
+    """Questions about the owner's own ties to this company, answered from the profile:
+    relatives working there, or having worked there before. None = not such a question."""
+    if not _names_employer(label, job):
+        return None
+    e, here = p.experience, normalize(job.company)
+    if _FAMILY_THERE.search(label):
+        return here in [normalize(c) for c in e.family_employed_at]
+    if _WORKED_HERE.search(label):
+        return here in [normalize(c) for c in [*e.past_employers, e.current_company or ""] if c]
+    return None
 
 
 def _month(yyyy_mm: str | None) -> list[str] | None:
@@ -375,10 +386,9 @@ def resolve(
                 )
             results[i] = ans
             continue
-        if _WORKED_HERE.search(label) and _names_employer(label, job):
-            worked = _worked_at(job, profile)
-            ans = _answer(f, worked, "profile")
-            if ans.value is None and (option := _by_polarity(f.options, worked)):
+        if (tie := _tie_to_company(label, job, profile)) is not None:
+            ans = _answer(f, tie, "profile")
+            if ans.value is None and (option := _by_polarity(f.options, tie)):
                 ans = _answer(f, option, "profile", "the option that says so")
             if ans.confident and ans.value is not None:
                 results[i] = ans

@@ -67,6 +67,8 @@ class FakeIMAP:
 
     def select(self, box, readonly):
         assert readonly
+        self.box = box
+        return "OK", [b"1"]
 
     def search(self, charset, *criteria):
         assert inbox.SENDER in " ".join(criteria)
@@ -116,3 +118,22 @@ def test_no_code_in_time_is_none_and_that_company_waits_for_the_next_run():
     assert codes("Affirm", CLICK) is None
     # Its code could still arrive and be mistaken for the next Affirm job's.
     assert codes("Affirm", CLICK + timedelta(minutes=5)) is None
+
+
+def test_explain_says_why_each_email_is_skipped():
+    msgs = [(0, code_email(company="Brex")), (0, code_email(at=CLICK - timedelta(hours=1)))]
+    lines = reader(msgs).explain("Affirm", CLICK)
+    assert "for another company" in lines[0]
+    assert "sent before the Submit click" in lines[1]
+
+
+def test_explain_masks_the_code():
+    [line] = reader([(0, code_email())]).explain("Affirm", CLICK)
+    assert "Xk******" in line and "Xk7pQ2mZ" not in line
+
+
+def test_the_reader_searches_all_mail_so_archived_codes_count():
+    imap = FakeIMAP([(0, code_email())])
+    codes = inbox.GmailCodes("jane.doe@example.com", "app-password", connect=imap)
+    codes("Affirm", CLICK)
+    assert imap.box == inbox.MAILBOX

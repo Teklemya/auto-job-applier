@@ -3,7 +3,7 @@
 from collections import Counter
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from importlib import resources
 from pathlib import Path
@@ -82,6 +82,34 @@ def login_mail() -> None:
         raise typer.Exit(1) from e
     inbox.save_app_password(account, password)
     typer.echo(f"Saved in the Keychain (service {inbox.KEYCHAIN_SERVICE}). Codes are read only.")
+
+
+@app.command("mail-check")
+def mail_check(
+    company: str,
+    since: Annotated[
+        datetime | None, typer.Option(help="Only mail after this time (default: 2 days ago).")
+    ] = None,
+) -> None:
+    """Show what the code reader finds in Gmail for a company, and why it skips each email."""
+    try:
+        account = load_profile(paths.profile_path()).contact.email
+    except ProfileError as e:
+        typer.echo(str(e), err=True)
+        raise typer.Exit(1) from e
+    password = inbox.app_password(account)
+    if password is None:
+        typer.echo(f"No app password in the Keychain for {account}. Run `aja login-mail`.")
+        raise typer.Exit(1)
+    when = (since or datetime.now() - timedelta(days=2)).astimezone()
+    try:
+        lines = inbox.GmailCodes(account, password).explain(company, when)
+    except Exception as e:
+        typer.echo(f"Gmail refused the sign-in or the search: {e}", err=True)
+        raise typer.Exit(1) from e
+    typer.echo(f"Signed in as {account}. Greenhouse mail since {when:%Y-%m-%d %H:%M}:")
+    for line in lines:
+        typer.echo(f"  {line}")
 
 
 @app.command()

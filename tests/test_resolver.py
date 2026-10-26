@@ -206,12 +206,12 @@ def test_remaining_fields_go_to_the_llm_in_one_call(profile, bank):
     fields = [
         F("First Name"),
         F("Have you used Python professionally?", "select", options=YES_NO),
-        F("Do you have relatives working at Acme?", "select", options=YES_NO),
+        F("Are you willing to work weekends?", "select", options=YES_NO),
     ]
     model = FakeLLM(llm_says((1, "Yes", True), (2, "No", False)))
     got = run(fields, profile, bank, model)
     [call] = model.calls
-    assert "Python professionally" in call["prompt"] and "relatives" in call["prompt"]
+    assert "Python professionally" in call["prompt"] and "weekends" in call["prompt"]
     assert "First Name" not in call["prompt"]
     assert call["attachments"] == [(profile.resume_path.read_bytes(), "application/pdf")]
     assert [(a.value, a.source, a.confident) for a in got[1:]] == [
@@ -219,7 +219,7 @@ def test_remaining_fields_go_to_the_llm_in_one_call(profile, bank):
         (None, "llm", False),  # never filled in when unsure (D1)
     ]
     assert "'No'" in got[2].reason  # the suggestion is kept for review
-    assert resolver.gate(got) == ["Do you have relatives working at Acme?"]
+    assert resolver.gate(got) == ["Are you willing to work weekends?"]
 
 
 def test_llm_value_outside_options_is_rejected(profile, bank):
@@ -716,3 +716,22 @@ def test_worked_elsewhere_questions_are_not_about_this_company(profile, bank):
     q = F("Have you previously worked in a startup?", "select", options=YES_NO)
     [a] = run([q], profile, bank, model=FakeLLM(llm_says((0, "Yes", True))))
     assert a.source == "llm"
+
+
+def test_relatives_at_the_company_is_no_unless_listed(profile, bank):
+    q = F(
+        "Are any of your immediate family members employees or directors of Acme or Acme "
+        "Health PLLC, including a spouse or partner living in same household?",
+        "select",
+        options=YES_NO,
+    )
+    [a] = run([q], profile, bank)
+    assert (a.value, a.source) == ("No", "profile")
+    profile.experience.family_employed_at = ["Acme"]
+    [a] = run([q], profile, bank)
+    assert a.value == "Yes"
+
+
+def test_relatives_question_as_free_text_says_no(profile, bank):
+    [a] = run([F("Do you have any relatives who work at Acme?")], profile, bank)
+    assert a.value == "No"
