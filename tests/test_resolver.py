@@ -781,3 +781,15 @@ def test_an_empty_heard_about_list_is_left_to_other_sources(profile, bank):
     q = F("How did you hear about us?", "select", options=[])
     [a] = run([q], profile, bank, model=FakeLLM(llm_says((0, "x", False))))
     assert not a.confident
+
+
+def test_a_bare_graduation_year_answers_the_year_but_not_the_month(profile, bank):
+    profile.education[0].graduation = "2024"
+    year, month = run(
+        [F("Education: End date year"), F("Education: End date month")],
+        profile,
+        bank,
+        model=FakeLLM(llm_says((1, "May", False))),
+    )
+    assert year.value == "2024"
+    assert not month.confident

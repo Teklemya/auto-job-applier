@@ -73,14 +73,25 @@ _DATE_FORMATS = [
 ]
 
 
+_MONTH_NAME = re.compile(r"^([a-z]{3,9})\.?,? (\d{4})$|^(\d{4}),? ([a-z]{3,9})\.?$", re.I)
+_MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
+
+
 def to_year_month(text: str) -> str:
-    """A date in any common order, as "YYYY-MM"."""
+    """A date in any common order, as "YYYY-MM"; a bare year stays "YYYY" (month unknown)."""
+    text = text.strip()
+    if re.fullmatch(r"\d{4}", text):
+        return text
+    if m := _MONTH_NAME.match(text):
+        name, year = (m[1], m[2]) if m[1] else (m[4], m[3])
+        if name[:3].lower() in _MONTHS:
+            return f"{year}-{_MONTHS.index(name[:3].lower()) + 1:02d}"
     for pattern, parts in _DATE_FORMATS:
-        if m := pattern.match(text.strip()):
+        if m := pattern.match(text):
             year, month = parts(m)
             if 1 <= int(month) <= 12:
                 return f"{year}-{int(month):02d}"
-    raise ValueError(f"{text!r} is not a date like 2022-08, 2022-08-21 or 08/2022")
+    raise ValueError(f"{text!r} is not a date like 2022-08, 2022-08-21, 08/2022 or May 2022")
 
 
 class Education(_Strict):
@@ -93,7 +104,8 @@ class Education(_Strict):
     school_also: list[str] = []
     degree_also: list[str] = []
     major_also: list[str] = []
-    # Dates are stored as "YYYY-MM"; "2022-08-21", "08/2022", "08-21-2022" and "08-22" work too.
+    # Dates are stored as "YYYY-MM"; "2022-08-21", "08/2022", "08-21-2022", "08-22" and
+    # "Aug 2022" work too. A bare year ("2024") is kept, and month questions go to review.
     start: str | None = Field(None, validation_alias=AliasChoices("start", "start_date"))
     graduation: str = Field(validation_alias=AliasChoices("graduation", "end_date"))
     gpa: str | None = None

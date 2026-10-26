@@ -104,8 +104,12 @@ def test_unknown_fit_verdict_is_a_clear_error(example_profile_data, write_profil
 
 
 @pytest.mark.parametrize(
-    "given", ["2022-08", "2022-08-21", "2022/8", "08/2022", "08-21-2022", "8/21/2022", "08-22"]
-)
+    "given",
+    [
+        "2022-08", "2022-08-21", "2022/8", "08/2022", "08-21-2022", "8/21/2022", "08-22",
+        "Aug 2022", "August, 2022", "2022 Aug", "aug. 2022",
+    ],
+)  # fmt: skip
 def test_education_dates_take_any_common_format(given):
     assert to_year_month(given) == "2022-08"
 
@@ -116,6 +120,11 @@ def test_education_takes_start_date_and_end_date_as_keys(example_profile_data, w
     edu.update(start_date="2022-08-21", end_date="05/01/2026")
     profile = load_profile(write_profile(example_profile_data))
     assert (profile.education[0].start, profile.education[0].graduation) == ("2022-08", "2026-05")
+
+
+def test_a_bare_graduation_year_still_loads(example_profile_data, write_profile):
+    example_profile_data["education"][0]["graduation"] = 2024
+    assert load_profile(write_profile(example_profile_data)).education[0].graduation == "2024"
 
 
 def test_a_date_that_is_not_a_date_is_a_clear_error(example_profile_data, write_profile):
