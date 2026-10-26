@@ -55,15 +55,20 @@ def test_a_code_already_typed_is_never_used_again():
 class FakeIMAP:
     """An inbox whose messages arrive on the given poll (0 = first)."""
 
-    def __init__(self, arrivals):
-        self.arrivals, self.polls = arrivals, 0
+    def __init__(self, arrivals, fail_on=()):
+        self.arrivals, self.polls, self.logins, self.fail_on = arrivals, 0, 0, fail_on
 
     def __call__(self):
         self.polls += 1
         return self
 
+    def noop(self):
+        self.polls += 1
+        return "OK", [b""]
+
     def login(self, user, password):
         assert password == "app-password"
+        self.logins += 1
 
     def select(self, box, readonly):
         assert readonly
@@ -71,6 +76,8 @@ class FakeIMAP:
         return "OK", [b"1"]
 
     def search(self, charset, *criteria):
+        if self.polls in self.fail_on:
+            raise ConnectionResetError("dropped")
         assert inbox.SENDER in " ".join(criteria)
         n = sum(1 for when, _ in self.arrivals if when < self.polls)
         return "OK", [b" ".join(str(i + 1).encode() for i in range(n))]
@@ -84,7 +91,7 @@ class FakeIMAP:
         pass
 
 
-def reader(arrivals, timeout_s=60):
+def reader(arrivals, timeout_s=60, imap=None):
     now = [0.0]
 
     def sleep(s):
@@ -93,7 +100,7 @@ def reader(arrivals, timeout_s=60):
     return inbox.GmailCodes(
         "jane.doe@example.com",
         "app-password",
-        connect=FakeIMAP(arrivals),
+        connect=imap or FakeIMAP(arrivals),
         sleep=sleep,
         clock=lambda: now[0],
         timeout_s=timeout_s,
@@ -137,3 +144,27 @@ def test_the_reader_searches_all_mail_so_archived_codes_count():
     codes = inbox.GmailCodes("jane.doe@example.com", "app-password", connect=imap)
     codes("Affirm", CLICK)
     assert imap.box == inbox.MAILBOX
+
+
+def test_one_sign_in_per_wait():
+    imap = FakeIMAP([(4, code_email())])
+    assert reader([], imap=imap)("Affirm", CLICK) == "Xk7pQ2mZ"
+    assert imap.logins == 1
+
+
+def test_a_dropped_connection_signs_in_again():
+    imap = FakeIMAP([(4, code_email())], fail_on={2})
+    assert reader([], imap=imap)("Affirm", CLICK) == "Xk7pQ2mZ"
+    assert imap.logins == 2
+
+
+def test_a_date_without_a_zone_is_read_as_utc():
+    msg = code_email()
+    msg.replace_header("Date", "Sat, 24 Oct 2026 06:21:40 -0000")
+    assert inbox.code_in(msg, "Affirm", CLICK) == "Xk7pQ2mZ"
+
+
+def test_an_unreadable_date_is_skipped_not_a_crash():
+    msg = code_email()
+    msg.replace_header("Date", "sometime yesterday")
+    assert inbox.check(msg, "Affirm", CLICK) == (None, "no readable Date header")

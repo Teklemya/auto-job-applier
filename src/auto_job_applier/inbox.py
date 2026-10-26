@@ -58,6 +58,14 @@ def _text_lines(msg: EmailMessage) -> list[str]:
     return lines
 
 
+def _sent_at(msg: EmailMessage) -> datetime | None:
+    try:
+        sent = parsedate_to_datetime(str(msg.get("Date") or ""))
+    except (TypeError, ValueError):
+        return None
+    return sent if sent.tzinfo else sent.replace(tzinfo=UTC)  # "-0000": UTC, zone unknown
+
+
 def check(msg: EmailMessage, company: str, since: datetime) -> tuple[str | None, str]:
     """(code, "ok") for a Greenhouse security-code email for `company` that arrived at or
     after `since`, else (None, why not). The code stands on a line of its own."""
@@ -68,8 +76,10 @@ def check(msg: EmailMessage, company: str, since: datetime) -> tuple[str | None,
         return None, "not a security code email"
     if not normalize(company) or normalize(company) not in subject:
         return None, f"for another company, not {company}"
-    sent = msg.get("Date")
-    if sent is None or parsedate_to_datetime(sent) < since - CLOCK_SKEW:
+    sent = _sent_at(msg)
+    if sent is None:
+        return None, "no readable Date header"
+    if sent < since - CLOCK_SKEW:
         return None, "sent before the Submit click"
     codes = {line for line in _text_lines(msg) if _CODE_LINE.match(line)}
     if len(codes) != 1:
@@ -155,15 +165,18 @@ class GmailCodes:
 
     def _recent(self, since: datetime) -> list[tuple[str, EmailMessage]]:
         with self._inbox() as imap:
-            day = (since - timedelta(days=1)).strftime("%d-%b-%Y")
-            _, data = imap.search(None, "FROM", f'"{SENDER}"', "SINCE", day)
-            messages = []
-            for num in (data[0] or b"").split()[-10:]:
-                _, parts = imap.fetch(num, "(BODY.PEEK[])")
-                raw = next(p[1] for p in parts if isinstance(p, tuple))
-                msg = email.message_from_bytes(raw, policy=email.policy.default)
-                messages.append((msg.get("Message-ID") or num.decode(), msg))
-            return messages
+            return self._fetch(imap, since)
+
+    def _fetch(self, imap: imaplib.IMAP4, since: datetime) -> list[tuple[str, EmailMessage]]:
+        day = (since - timedelta(days=1)).strftime("%d-%b-%Y")
+        _, data = imap.search(None, "FROM", f'"{SENDER}"', "SINCE", day)
+        messages = []
+        for num in (data[0] or b"").split()[-10:]:
+            _, parts = imap.fetch(num, "(BODY.PEEK[])")
+            raw = next(p[1] for p in parts if isinstance(p, tuple))
+            msg = email.message_from_bytes(raw, policy=email.policy.default)
+            messages.append((msg.get("Message-ID") or num.decode(), msg))
+        return messages
 
     def explain(self, company: str, since: datetime) -> list[str]:
         """What the reader sees, one line per recent Greenhouse email (codes masked)."""
@@ -175,19 +188,29 @@ class GmailCodes:
         return lines or [f"no mail from {SENDER} since {since:%Y-%m-%d}"]
 
     def __call__(self, company: str, since: datetime) -> str | None:
+        """The code, or None after the timeout. Signs in once per wait and polls on that
+        connection (NOOP shows new mail); signs in again only after an error."""
         if normalize(company) in self.missed:
             return None
         since = since.astimezone(UTC)
         deadline = self.clock() + self.timeout_s
-        while True:
-            try:
-                hit = pick_code(self._recent(since), company, since, self.used)
-            except (OSError, imaplib.IMAP4.error):
-                hit = None  # a network blip: try again until the deadline
-            if hit:
-                self.used.add(hit[0])
-                return hit[1]
-            if self.clock() >= deadline:
-                self.missed.add(normalize(company))
-                return None
-            self.sleep(POLL_S)
+        with contextlib.ExitStack() as stack:
+            imap = None
+            while True:
+                hit = None
+                try:
+                    if imap is None:
+                        imap = stack.enter_context(self._inbox())
+                    else:
+                        imap.noop()
+                    hit = pick_code(self._fetch(imap, since), company, since, self.used)
+                except Exception:  # a network blip or an odd message: retry until the deadline
+                    stack.close()
+                    imap = None
+                if hit:
+                    self.used.add(hit[0])
+                    return hit[1]
+                if self.clock() >= deadline:
+                    self.missed.add(normalize(company))
+                    return None
+                self.sleep(POLL_S)
