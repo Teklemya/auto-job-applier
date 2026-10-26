@@ -531,6 +531,21 @@ def test_a_draft_made_after_a_submit_click_is_never_submitted_again(
     assert sessions[0].submitted == 0
 
 
+def test_a_click_is_remembered_after_a_refill_rewrites_the_reason(
+    home_with_profile, example_profile_data, monkeypatch
+):
+    live(home_with_profile, example_profile_data, cap=3)
+    job_id = queue(home_with_profile, LYFT, Status.FAILED, apply.UNCONFIRMED)
+    s = JobStore(home_with_profile / "jobs.db")
+    s.set_status(job_id, Status.STAGED, "needs review: 1 blocking")  # a later re-fill
+    s.close()
+    sessions = []
+    ready_greenhouse(monkeypatch, sessions)
+    result = runner.invoke(cli.app, ["apply", str(job_id)])
+    assert result.exit_code == 0, result.output
+    assert sessions[0].submitted == 0
+
+
 def test_unconfirmed_clicks_count_toward_the_daily_cap(
     home_with_profile, example_profile_data, monkeypatch
 ):

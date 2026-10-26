@@ -358,7 +358,10 @@ def _apply_one(
     on its way, so it is only re-filled, unless the owner checked and passes `retry`.
     When `watched` (the owner ran it by hand), the page waits for an emailed security code."""
     assert job.id is not None
-    clicked_before = (job.reason or "").startswith(CLICKED) and not retry
+    # The audit log, not the job's reason: a later re-fill rewrites the reason.
+    clicked_before = not retry and any(
+        (e["message"] or "").startswith(CLICKED) for e in store.events(job.id)
+    )
     jd = store.get_description(job.id)
     if jd is None:
         jd = fetch_description(job)
