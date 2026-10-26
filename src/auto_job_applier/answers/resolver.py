@@ -178,6 +178,25 @@ def _tie_to_company(label: str, job: Job, p: Profile) -> bool | None:
     return None
 
 
+_START_WINDOW = re.compile(r"(able|available|can you|could you) (to )?start|start (between|by|in)")
+_IN_OFFICE = re.compile(r"hybrid|in.office|on.?site|office attendance|days a week in")
+_CONSENT = re.compile(r"consent.*(demographic|self identif|survey)|(demographic|survey).*consent")
+_MONTH_YEAR = re.compile(
+    r"\b(?:(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.? )?(20\d\d)\b"
+)
+
+
+def _window_end(label: str) -> str | None:
+    """The last month a question's date range allows ("... and September 2027" -> 2027-09;
+    a bare year means its December)."""
+    found = _MONTH_YEAR.findall(label)
+    if not found:
+        return None
+    month, year = found[-1]
+    months = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
+    return f"{year}-{months.index(month) + 1 if month else 12:02d}"
+
+
 def _month(yyyy_mm: str | None) -> list[str] | None:
     """A month as forms spell it, in the order to try: "August", "Aug", "08", "8"."""
     if not yyyy_mm or len(yyyy_mm) < 7:
@@ -192,8 +211,21 @@ def _preference_value(label: str, field: FormField, p: Profile) -> Value | objec
     pref = p.preferences
     if label.startswith(("employment ", "education ")):
         return None  # "Employment: Start date" is a past job's date, not the preferred start
+    yes_no = field.kind in ("select", "radio", "checkbox")
+    if yes_no and (end := _window_end(label)) and _START_WINDOW.search(label):
+        return None if pref.earliest_start is None else pref.earliest_start <= end
     if re.search(r"start date|when can you start|available to start|earliest start", label):
         return pref.start_date
+    if field.kind == "checkbox" and _CONSENT.search(label):
+        return pref.demographic_consent
+    if yes_no and _IN_OFFICE.search(label) and not _OPEN_ENDED.search(label):
+        return pref.in_office_ok
+    if re.search(
+        r"(type|area|kind|field) of (software )?engineering|engineering (area|focus)", label
+    ):
+        return pref.engineering_focus or None
+    if re.search(r"preferred (office|work )?location|office location|which office", label):
+        return pref.office_locations or None
     if re.search(
         r"(how|where) did you (first )?(hear|find|learn|come across)|how you (heard|found|learned)",
         label,

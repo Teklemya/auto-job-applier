@@ -69,6 +69,11 @@ preferences:
   heard_about_us: ["Job board", "Online job board", "Job posting", "Other"]
   salary_floor: 120000
   willing_to_relocate: true
+  earliest_start: 2027-01        # "able to start between January and September 2027?" -> Yes
+  in_office_ok: true             # hybrid / in-office requirement
+  engineering_focus: ["Software Engineering", "Backend", "Full Stack"]  # first offered wins
+  office_locations: ["Seattle", "San Francisco", "New York"]
+  demographic_consent: true      # tick "I consent to ... demographic data" boxes
 
 # Screening locations. Remote always passes. Omit a list to keep the built-in defaults
 # (see `Targeting` in profile.py); set it to replace them.

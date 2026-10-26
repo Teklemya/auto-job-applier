@@ -224,7 +224,7 @@ def test_remaining_fields_go_to_the_llm_in_one_call(profile, bank):
 
 def test_llm_value_outside_options_is_rejected(profile, bank):
     model = FakeLLM(llm_says((0, "Sure", True)))
-    [a] = run([F("Comfortable on-site?", "select", options=YES_NO)], profile, bank, model)
+    [a] = run([F("Comfortable with travel?", "select", options=YES_NO)], profile, bank, model)
     assert not a.confident
 
 
@@ -793,3 +793,67 @@ def test_a_bare_graduation_year_answers_the_year_but_not_the_month(profile, bank
     )
     assert year.value == "2024"
     assert not month.confident
+
+
+START_WINDOW = (
+    "The start date for this role falls in 2027. Are you able to start between January 2027 "
+    "and September 2027?"
+)
+HYBRID = (
+    "Our internship roles may be remote or hybrid depending on team and location. Hybrid roles "
+    "are based in San Francisco, Palo Alto, or Seattle and require some in-office attendance for "
+    "the duration of the internship, based on team needs. Would you be able to meet this "
+    "requirement if matched to a hybrid role?"
+)
+CONSENT = (
+    "By checking this box, I consent to Acme collecting, storing, and processing my responses "
+    "to the demographic data surveys above."
+)
+
+
+def test_a_start_window_is_yes_when_the_earliest_start_falls_inside_it(profile, bank):
+    q = F(START_WINDOW, "select", options=YES_NO)
+    profile.preferences.earliest_start = "2027-01"
+    [a] = run([q], profile, bank)
+    assert (a.value, a.source) == ("Yes", "preferences")
+    profile.preferences.earliest_start = "2027-11"
+    [a] = run([q], profile, bank)
+    assert a.value == "No"
+
+
+def test_a_start_window_without_an_earliest_start_goes_to_review(profile, bank):
+    q = F(START_WINDOW, "select", options=YES_NO)
+    profile.preferences.earliest_start = None
+    [a] = run([q], profile, bank, model=FakeLLM(llm_says((0, "Yes", False))))
+    assert not a.confident
+
+
+def test_hybrid_requirement_comes_from_the_preference(profile, bank):
+    q = F(HYBRID, "select", options=YES_NO)
+    profile.preferences.in_office_ok = True
+    [a] = run([q], profile, bank)
+    assert (a.value, a.source) == ("Yes", "preferences")
+
+
+def test_engineering_focus_and_office_take_the_first_choice_offered(profile, bank):
+    profile.preferences.engineering_focus = ["Software Engineering", "Backend"]
+    profile.preferences.office_locations = ["Seattle", "San Francisco"]
+    focus = F(
+        "What type of engineering are you primarily interested in?",
+        "select",
+        options=["Mobile", "Security", "Backend", "Full Stack", "Web"],
+    )
+    office = F(
+        "What is your preferred office location?",
+        "select",
+        options=["San Francisco", "Palo Alto", "Seattle", "Remote"],
+    )
+    a, b = run([focus, office], profile, bank)
+    assert (a.value, b.value) == ("Backend", "Seattle")
+
+
+def test_demographic_consent_box_is_ticked_when_the_owner_agreed(profile, bank):
+    q = F(CONSENT, "checkbox")
+    profile.preferences.demographic_consent = True
+    [a] = run([q], profile, bank)
+    assert (a.value, a.confident) == ("Yes", True)

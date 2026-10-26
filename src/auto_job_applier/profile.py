@@ -139,10 +139,27 @@ class Demographics(_Strict):
 
 class Preferences(_Strict):
     start_date: str = "Two weeks after offer"
+    # The first month you could start ("2027-01"), for "are you able to start between January
+    # and September 2027?". Left empty, such questions go to review.
+    earliest_start: str | None = None
     # One answer, or choices tried in order until the form offers one.
     heard_about_us: str | list[str] = ["Job board", "Online job board", "Job posting", "Other"]
     salary_floor: int = 120_000  # never answer below this (R12)
     willing_to_relocate: bool = True
+    # "Would you be able to work hybrid / in the office?" Left empty, it goes to review.
+    in_office_ok: bool | None = None
+    # Ranked choices for "what type of engineering are you interested in?" and "preferred
+    # office location?": the first one a form offers is picked.
+    engineering_focus: list[str] = []
+    office_locations: list[str] = []
+    # Tick "I consent to <company> processing my demographic survey answers". Left empty,
+    # a required consent box goes to review.
+    demographic_consent: bool | None = None
+
+    @field_validator("earliest_start", mode="before")
+    @classmethod
+    def _year_month(cls, v: object) -> object:
+        return None if v is None else to_year_month(str(v))
 
 
 class Targeting(_Strict):
