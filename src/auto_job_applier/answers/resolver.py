@@ -41,6 +41,8 @@ _WORKED_HERE = re.compile(
     r"(previously|ever|formerly|before|in the past)\b.*\b(employed|worked|work)\b"
     r"|\b(employed|worked)\b.*\b(before|previously|in the past)\b|former employee"
 )
+# "Have you previously applied to work at Affirm?", "ever worked for a competitor of ours?"
+_NOT_EMPLOYMENT = re.compile(r"appl(y|ied|ication)|interview|competitor|client|customer|vendor")
 _FAMILY_THERE = re.compile(
     r"\b(family|relatives?|related to|spouse|household)\b.*\b(employ\w*|work\w*|director\w*)\b"
     r"|\b(employ\w*|work\w*)\b.*\b(family|relatives?|related to)\b"
@@ -86,11 +88,10 @@ def _profile_value(label: str, p: Profile) -> Value:
         (r"address line 2|apartment|suite", lambda: a.line2 or None),
         (r"address", lambda: a.line1),
         (
-            r"\b(located|locat\w+|reside|residing|live|living|based) (currently )?in the "
-            r"(us|u s|usa|united states)\b",
-            lambda: (
-                normalize(a.country) in ("united states", "us", "usa", "united states of america")
-            ),
+            # A yes/no question; "Where are you located in the US?" wants a place instead.
+            r"^(?!.*\b(where|which|what)\b).*\b(located|locat\w+|reside|residing|live|living"
+            r"|based) (currently )?in the (us|u s|u s a|usa|united states)\b",
+            lambda: _in_us(a.country),
         ),
         (
             r"current location|where are you (currently )?located|^location( city)?$",
@@ -142,11 +143,17 @@ def _profile_value(label: str, p: Profile) -> Value:
     return None
 
 
+def _in_us(country: str) -> bool:
+    return normalize(country).replace(" ", "") in (
+        "us", "usa", "unitedstates", "unitedstatesofamerica"
+    )  # fmt: skip
+
+
 def _names_employer(label: str, job: Job) -> bool:
-    """The question is about this company: it names it, or says "us"."""
+    """The question is about this company: it names it, or says "for us" or "our company"."""
     company = normalize(job.company)
     return bool(company and company in label) or bool(
-        re.search(r"\b(us|our (company|organization|team)|this company)\b", label)
+        re.search(r"\b((for|with|at|by) us|our (company|organization|team)|this company)\b", label)
     )
 
 
@@ -166,7 +173,7 @@ def _tie_to_company(label: str, job: Job, p: Profile) -> bool | None:
     e, here = p.experience, normalize(job.company)
     if _FAMILY_THERE.search(label):
         return here in [normalize(c) for c in e.family_employed_at]
-    if _WORKED_HERE.search(label):
+    if _WORKED_HERE.search(label) and not _NOT_EMPLOYMENT.search(label):
         return here in [normalize(c) for c in [*e.past_employers, e.current_company or ""] if c]
     return None
 

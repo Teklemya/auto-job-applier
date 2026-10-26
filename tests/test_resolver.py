@@ -748,3 +748,29 @@ def test_relatives_question_as_free_text_says_no(profile, bank):
 def test_living_in_the_us_comes_from_the_address(profile, bank, question):
     [a] = run([F(question, "select", options=YES_NO)], profile, bank)
     assert (a.value, a.source) == ("Yes", "profile")
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "Have you ever worked for a competitor of Acme?",
+        "Have you previously applied to work at Acme?",
+        "Have you previously worked in the US?",
+        "Have you ever worked with us as a vendor or client?",
+    ],
+)
+def test_near_miss_employment_questions_are_not_guessed(profile, bank, question):
+    q = F(question, "select", options=YES_NO)
+    [a] = run([q], profile, bank, model=FakeLLM(llm_says((0, "Yes", False))))
+    assert a.source != "profile"
+
+
+def test_where_in_the_us_wants_a_place_not_yes(profile, bank):
+    [a] = run([F("Where are you currently located in the US?")], profile, bank)
+    assert a.value == f"{profile.address.city}, {profile.address.state}"
+
+
+def test_dotted_country_counts_as_the_us(profile, bank):
+    profile.address.country = "U.S.A."
+    [a] = run([F("Are you located in the US?", "select", options=YES_NO)], profile, bank)
+    assert a.value == "Yes"
