@@ -220,3 +220,10 @@ def test_greenhouses_verification_code_page_is_recognized():
         "8-character code to confirm you're a human. Security code"
     )
     assert greenhouse._SECURITY_CODE.search(text)
+
+
+def test_a_job_description_about_security_codes_does_not_hide_the_code_prompt():
+    jd = "You will build security code review tools. Apply below."
+    prompt = jd + " A verification code was sent to j@x.com. Security code"
+    assert not greenhouse.code_newly_asked(jd, jd)
+    assert greenhouse.code_newly_asked(jd, prompt)

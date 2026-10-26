@@ -221,6 +221,12 @@ _SECURITY_CODE = re.compile(r"(security|verification) code|enter the \d+.charact
 SUBMIT_WAIT_MS = 30_000
 
 
+def code_newly_asked(before: str, after: str) -> bool:
+    """A security-code prompt appeared after the click. A job description that mentions
+    "security code" must not hide it, so mentions are counted, not just looked for."""
+    return len(_SECURITY_CODE.findall(after)) > len(_SECURITY_CODE.findall(before))
+
+
 class GreenhouseSession:
     """The application form open in the tool's browser (see apply.FormSession)."""
 
@@ -321,7 +327,7 @@ class GreenhouseSession:
         it from the inbox (`codes`) and type it; failing that, keep the page open
         `code_wait_ms` for the owner to type it."""
         before = set(self._errors())  # banners and notices already on the page aren't errors
-        code_before = bool(_SECURITY_CODE.search(self.page.inner_text("body")))
+        body_before = self.page.inner_text("body")
         clicked_at = datetime.now(UTC)
         self.page.locator(SUBMIT_BUTTON).last.click()
         ticks, code_handled = SUBMIT_WAIT_MS // 500, False
@@ -332,7 +338,7 @@ class GreenhouseSession:
                 new = [e for e in self._errors() if e not in before]
                 showing = self.page.locator(FORM_READY).count() > 0
                 body = self.page.inner_text("body")
-                code = not code_before and bool(_SECURITY_CODE.search(body))
+                code = code_newly_asked(body_before, body)
                 outcome = submit_outcome(self.page.url, body, new, showing, code)
                 if outcome is None:
                     continue
