@@ -774,3 +774,10 @@ def test_dotted_country_counts_as_the_us(profile, bank):
     profile.address.country = "U.S.A."
     [a] = run([F("Are you located in the US?", "select", options=YES_NO)], profile, bank)
     assert a.value == "Yes"
+
+
+def test_an_empty_heard_about_list_is_left_to_other_sources(profile, bank):
+    profile.preferences.heard_about_us = []
+    q = F("How did you hear about us?", "select", options=[])
+    [a] = run([q], profile, bank, model=FakeLLM(llm_says((0, "x", False))))
+    assert not a.confident

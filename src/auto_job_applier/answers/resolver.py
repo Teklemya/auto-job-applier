@@ -324,7 +324,7 @@ def _from_known_sources(
     )
     for source, get in sources:
         v = get()
-        if v is None:
+        if v is None or v == []:  # an empty choice list ("heard_about_us: []") is no answer
             continue
         ans = _answer(f, None if v is _BLANK else v, source)
         if ans.confident:
