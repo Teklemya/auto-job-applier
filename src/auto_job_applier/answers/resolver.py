@@ -30,6 +30,8 @@ _WORK_AUTH = re.compile(
     r"|\bopt\b(?! (in|out))|\bcpt\b|green card|permanent resid"
 )
 # Questions about a specific status. A generic "yes, I'm authorized" answer must never reach them.
+# Countries under U.S. embargo, named in export-control screening questions.
+_SANCTIONED = re.compile(r"\b(cuba|iran|north korea|syria|crimea)\b")
 _STATUS_SPECIFIC = re.compile(r"citizen|u ?s person|itar|export|h ?1 ?b|green card|permanent")
 _OPEN_ENDED = re.compile(
     r"\b(what|which|describe|explain|elaborate|details?|provide|tell us)\b|^if\b"
@@ -130,6 +132,7 @@ def _profile_value(label: str, p: Profile) -> Value:
             r"^(how many )?(total )?years of (professional |work )?experience( do you have)?$",
             lambda: f"{e.years_experience:g}",
         ),
+        (r"sexual orientation", lambda: d.sexual_orientation),
         (r"pronoun", lambda: d.pronouns),  # before "gender": "your gender pronouns"
         (r"hispanic|latin", lambda: d.hispanic_latino),
         (r"\brace\b|ethnicity", lambda: d.race_ethnicity),
@@ -277,6 +280,12 @@ def _work_auth_value(label: str, p: Profile) -> Value:
         return wa.authorized_to_work_us
     if re.search(r"visa status|immigration status|current visa", label):
         return wa.visa_status
+    if "citizen" in label and _SANCTIONED.search(label):
+        # "Are you a citizen or resident of Cuba, Iran, North Korea, Syria or Crimea?"
+        if not wa.citizenships:
+            return None
+        mine = [normalize(c) for c in [*wa.citizenships, p.address.country]]
+        return any(re.search(rf"\b{re.escape(c)}\b", label) for c in mine if c)
     return None
 
 

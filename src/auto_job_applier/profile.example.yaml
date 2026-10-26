@@ -27,6 +27,7 @@ work_authorization:
   requires_sponsorship_now: false
   requires_sponsorship_future: false
   visa_status: F-1 OPT
+  citizenships: []  # e.g. ["Ethiopia"]; for "citizen or resident of Cuba, Iran, ...?"
   # Option sentences you approve, word for word, for questions that aren't Yes/No.
   # `aja review` prints the line to add after you answer one.
   approved_answers: []
@@ -61,6 +62,7 @@ demographics:
   hispanic_latino: Decline to self-identify
   veteran_status: Decline to self-identify
   disability_status: Decline to self-identify
+  sexual_orientation: Decline to self-identify  # or ["Heterosexual", "Straight"]
   pronouns: null  # e.g. He/Him
 
 preferences:

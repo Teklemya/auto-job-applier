@@ -57,6 +57,10 @@ class WorkAuthorization(_Strict):
     requires_sponsorship_now: bool
     requires_sponsorship_future: bool
     visa_status: str | None = None  # e.g. "F-1 OPT"; only used if a form asks directly
+    # Countries you are a citizen of, for "are you a citizen or resident of Cuba, Iran, ...?"
+    # (export-control screening). Residence comes from the address. Left empty, such
+    # questions go to review.
+    citizenships: list[str] = []
     # Exact option sentences the owner approved for questions whose options aren't Yes/No,
     # e.g. "I am authorized to work for any employer in the country ...". Used verbatim.
     approved_answers: list[str] = []
@@ -134,6 +138,8 @@ class Demographics(_Strict):
     hispanic_latino: str = DECLINE
     veteran_status: str = DECLINE
     disability_status: str = DECLINE
+    # One answer, or spellings tried in order: ["Heterosexual", "Straight"].
+    sexual_orientation: str | list[str] = DECLINE
     pronouns: str | None = None  # e.g. "He/Him"; left empty, a required question goes to review
 
 

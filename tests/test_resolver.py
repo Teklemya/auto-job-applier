@@ -857,3 +857,38 @@ def test_demographic_consent_box_is_ticked_when_the_owner_agreed(profile, bank):
     profile.preferences.demographic_consent = True
     [a] = run([q], profile, bank)
     assert (a.value, a.confident) == ("Yes", True)
+
+
+SANCTIONS = (
+    "Please indicate whether you are either a citizen or resident of any of the following "
+    "countries: Cuba, Iran, North Korea, Syria or Crimea Region of Ukraine."
+)
+
+
+def test_sanctioned_countries_question_comes_from_citizenships_and_address(profile, bank):
+    q = F(SANCTIONS, "select", options=YES_NO)
+    profile.work_authorization.citizenships = ["Ethiopia"]
+    [a] = run([q], profile, bank)
+    assert (a.value, a.source) == ("No", "profile")
+    profile.work_authorization.citizenships = ["Iran"]
+    [a] = run([q], profile, bank)
+    assert a.value == "Yes"
+
+
+def test_sanctioned_countries_question_without_citizenships_goes_to_review(profile, bank):
+    profile.work_authorization.citizenships = []
+    [a] = run([F(SANCTIONS, "select", options=YES_NO)], profile, bank)
+    assert not a.confident
+
+
+def test_sexual_orientation_takes_the_first_spelling_offered(profile, bank):
+    q = F(
+        "Voluntary Self-Identification of Sexual Orientation",
+        "select",
+        options=["Bisexual", "Heterosexual", "Homosexual", "I don't wish to answer"],
+    )
+    [a] = run([q], profile, bank)
+    assert a.value == "I don't wish to answer"
+    profile.demographics.sexual_orientation = ["Straight", "Heterosexual"]
+    [a] = run([q], profile, bank)
+    assert a.value == "Heterosexual"
