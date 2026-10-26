@@ -88,7 +88,11 @@ def login_mail() -> None:
 def mail_check(
     company: str,
     since: Annotated[
-        datetime | None, typer.Option(help="Only mail after this time (default: 2 days ago).")
+        datetime | None,
+        typer.Option(
+            help="Only mail after this local time, e.g. 2026-10-24T02:00 (default: 2 days ago).",
+            formats=["%Y-%m-%d", "%Y-%m-%dT%H:%M", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M"],
+        ),
     ] = None,
 ) -> None:
     """Show what the code reader finds in Gmail for a company, and why it skips each email."""

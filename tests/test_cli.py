@@ -177,3 +177,13 @@ def test_write_unknown_job(aja_home, example_profile_data):
     result = runner.invoke(app, ["write", "99999"])
     assert result.exit_code == 1
     assert "No job #99999" in result.output
+
+
+def test_mail_check_takes_a_short_since_time(aja_home, example_profile_data, monkeypatch):
+    from auto_job_applier import inbox
+
+    aja_home.mkdir(parents=True)
+    (aja_home / "profile.yaml").write_text(yaml.safe_dump(example_profile_data))
+    monkeypatch.setattr(inbox, "app_password", lambda account: None)
+    result = runner.invoke(app, ["mail-check", "Affirm", "--since", "2026-10-24T02:00"])
+    assert "aja login-mail" in result.output  # got past parsing the time
