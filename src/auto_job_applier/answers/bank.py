@@ -37,6 +37,16 @@ def _numbers(text: str) -> list[str]:
     return re.findall(r"\d+", text)
 
 
+def same_option(value: str, options: list[str]) -> str | None:
+    """The option spelled like `value`, or the one option that means the same degree or
+    phrase ("Bachelor's" for "Bachelor's Degree"); None when none or several do."""
+    wanted = normalize(value)
+    if exact := [o for o in options if normalize(o) == wanted]:
+        return exact[0]
+    spelled = [o for o in options if option_key(o) == option_key(value)]
+    return spelled[0] if len(spelled) == 1 else None
+
+
 class AnswerBank:
     def __init__(self, store: JobStore):
         self.store = store

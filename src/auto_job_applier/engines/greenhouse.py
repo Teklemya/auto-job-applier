@@ -16,7 +16,7 @@ from datetime import UTC, datetime
 from html.parser import HTMLParser
 from pathlib import Path
 
-from ..answers.bank import normalize, option_key
+from ..answers.bank import normalize, same_option
 from ..geo import US_STATES
 from ..jd_fetch import api_url, get_json
 from ..models import FormField, Job
@@ -162,13 +162,8 @@ def pick_option(value: str, options: list[str]) -> str | None:
     Places come back spelled out ("Kansas City, Missouri, United States"), so a value like
     "Kansas City, MO" matches on the city and then on the state, by name or abbreviation.
     """
-    wanted = normalize(value)
-    exact = [o for o in options if normalize(o) == wanted]
-    if exact:
-        return exact[0]
-    spelled = [o for o in options if option_key(o) == option_key(value)]
-    if len(spelled) == 1:  # "Bachelor's" for "Bachelor's Degree"
-        return spelled[0]
+    if same := same_option(value, options):
+        return same
     head, *rest = [normalize(part) for part in value.split(",")]
     hits = [o for o in options if normalize(o).startswith(head)]
     for part in rest:

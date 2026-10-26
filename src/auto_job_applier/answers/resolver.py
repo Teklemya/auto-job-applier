@@ -16,7 +16,7 @@ from pydantic import BaseModel
 from ..llm import LLM, LLMError, QuotaExhausted
 from ..models import FormField, Job, ResolvedAnswer
 from ..profile import DECLINE, Profile
-from .bank import AnswerBank, normalize, option_key
+from .bank import AnswerBank, normalize, same_option
 from .facts import candidate_facts
 
 Writer = Callable[[FormField, Job, str], ResolvedAnswer]
@@ -267,13 +267,9 @@ def match_option(value: Value, field: FormField) -> str | None:
         return hits[0] if len(hits) == 1 else None
     if not field.options:
         return value
+    if same := same_option(value, field.options):
+        return same
     v = normalize(value)
-    for o in field.options:
-        if normalize(o) == v:
-            return o
-    spelled = [o for o in field.options if option_key(o) == option_key(value)]
-    if len(spelled) == 1:  # "Bachelor's" for "Bachelor's Degree"
-        return spelled[0]
     if value == DECLINE:
         hits = [o for o in field.options if _DECLINE_OPTION.search(normalize(o))]
     else:
