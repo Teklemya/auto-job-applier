@@ -735,3 +735,16 @@ def test_relatives_at_the_company_is_no_unless_listed(profile, bank):
 def test_relatives_question_as_free_text_says_no(profile, bank):
     [a] = run([F("Do you have any relatives who work at Acme?")], profile, bank)
     assert a.value == "No"
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "Are you located in the US?",
+        "Do you currently reside in the United States?",
+        "Are you based in the U.S.?",
+    ],
+)
+def test_living_in_the_us_comes_from_the_address(profile, bank, question):
+    [a] = run([F(question, "select", options=YES_NO)], profile, bank)
+    assert (a.value, a.source) == ("Yes", "profile")

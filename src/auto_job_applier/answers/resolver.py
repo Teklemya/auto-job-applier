@@ -86,6 +86,13 @@ def _profile_value(label: str, p: Profile) -> Value:
         (r"address line 2|apartment|suite", lambda: a.line2 or None),
         (r"address", lambda: a.line1),
         (
+            r"\b(located|locat\w+|reside|residing|live|living|based) (currently )?in the "
+            r"(us|u s|usa|united states)\b",
+            lambda: (
+                normalize(a.country) in ("united states", "us", "usa", "united states of america")
+            ),
+        ),
+        (
             r"current location|where are you (currently )?located|^location( city)?$",
             lambda: f"{a.city}, {a.state}",
         ),
