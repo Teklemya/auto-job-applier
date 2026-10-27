@@ -117,7 +117,8 @@ def _profile_value(label: str, p: Profile) -> Value:
             r"major|field of study|discipline",
             lambda: edu and [edu.major, *edu.major_also],
         ),
-        (r"graduation year|year of graduation", lambda: edu and edu.graduation[:4]),
+        # A year the dropdown doesn't list (2026 among 2027-2030) is truthfully "Other".
+        (r"graduation year|year of graduation", lambda: edu and [edu.graduation[:4], "Other"]),
         (r"graduat", lambda: edu and edu.graduation),
         (r"\bgpa\b", lambda: edu and edu.gpa),
         # Greenhouse labels its employment section "Employment: Company name" (T7).

@@ -946,3 +946,14 @@ def test_a_ranked_choice_past_the_list_goes_to_review(profile, bank):
     q = F("Please select your second choice of interest.", "select", options=AREAS)
     [a] = run([q], profile, bank, model=FakeLLM(llm_says((0, "Mobile Engineer", False))))
     assert not a.confident
+
+
+def test_a_graduation_year_the_form_does_not_list_is_other(profile, bank):
+    profile.education[0].graduation = "2026-05"
+    years = ["2027", "2028", "2029", "2030", "Other"]
+    [a] = run([F("What is your expected graduation year?", "select", options=years)], profile, bank)
+    assert a.value == "Other"
+    [a] = run([F("Expected graduation year", "select", options=["2026", "Other"])], profile, bank)
+    assert a.value == "2026"
+    [a] = run([F("Graduation year")], profile, bank)
+    assert a.value == "2026"
