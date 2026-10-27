@@ -135,8 +135,10 @@ def _profile_value(label: str, p: Profile) -> Value:
         ),
         (r"sexual orientation", lambda: d.sexual_orientation),
         (r"pronoun", lambda: d.pronouns),  # before "gender": "your gender pronouns"
+        (r"non ?compete|non ?solicit|restrictive covenant", lambda: e.non_compete),
+        (r"transgender", lambda: d.transgender),  # before "gender"
         (r"hispanic|latin", lambda: d.hispanic_latino),
-        (r"\brace\b|ethnicity", lambda: d.race_ethnicity),
+        (r"\brace\b|ethnicit", lambda: d.race_ethnicity),  # "ethnicity", "ethnicities"
         (r"gender", lambda: d.gender),
         (r"veteran", lambda: d.veteran_status),
         (r"disabilit", lambda: d.disability_status),
