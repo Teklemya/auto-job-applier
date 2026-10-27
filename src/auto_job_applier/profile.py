@@ -161,6 +161,9 @@ class Preferences(_Strict):
     # Tick "I consent to <company> processing my demographic survey answers". Left empty,
     # a required consent box goes to review.
     demographic_consent: bool | None = None
+    # Tick required boxes that only acknowledge or consent ("I have read the privacy notice").
+    # Boxes that state a fact about you ("I certify I am a citizen") are never ticked.
+    tick_acknowledgements: bool = True
 
     @field_validator("earliest_start", mode="before")
     @classmethod

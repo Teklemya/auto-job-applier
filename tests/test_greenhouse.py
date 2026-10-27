@@ -260,7 +260,7 @@ def test_required_inputs_left_empty_are_found_on_the_page():
             browser = pw.chromium.launch()
             page = browser.new_page()
             page.set_content(MISSING_FORM)
-            found = greenhouse.GreenhouseSession(page, None).missing_required()
+            found = [m[:2] for m in greenhouse.GreenhouseSession(page, None).missing_required()]
             browser.close()
     except sync_api.Error as e:  # no browser installed here
         pytest.skip(str(e))

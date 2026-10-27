@@ -76,6 +76,7 @@ preferences:
   engineering_focus: ["Software Engineering", "Backend", "Full Stack"]  # first offered wins
   office_locations: ["Seattle", "San Francisco", "New York"]
   demographic_consent: true      # tick "I consent to ... demographic data" boxes
+  tick_acknowledgements: true    # tick "I acknowledge / have read / agree" boxes, never fact claims
 
 # Screening locations. Remote always passes. Omit a list to keep the built-in defaults
 # (see `Targeting` in profile.py); set it to replace them.

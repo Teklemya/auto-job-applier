@@ -336,6 +336,7 @@ def _submits_left(profile: Profile, store: JobStore) -> int:
 
 
 CODE_WAIT_MS = 5 * 60_000  # time to type an emailed security code at `aja apply`
+HAND_OVER_MS = 10 * 60_000  # time to finish a blocked form by hand at `aja apply`
 
 
 def _codes(profile: Profile) -> inbox.GmailCodes | None:
@@ -390,7 +391,19 @@ def _apply_one(
             writer=make_writer(profile, model),
             submit=not clicked_before and left > 0,
             held=held,
+            hand_over_ms=HAND_OVER_MS if watched else 0,
+            on_hand_over=_tell_owner,
         )
+
+
+def _tell_owner(blockers: list[str]) -> None:
+    typer.echo("Over to you in the browser. Still needed (outlined in red):")
+    for blocker in blockers:
+        typer.echo(f"  - {blocker}")
+    typer.echo(
+        f"Finish them and click Submit; the page is watched for up to {HAND_OVER_MS // 60_000}"
+        " minutes. Leave the window open. Ctrl-C keeps it as a draft."
+    )
 
 
 @app.command("apply")

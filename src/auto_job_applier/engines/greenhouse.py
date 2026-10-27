@@ -248,7 +248,9 @@ _MISSING_REQUIRED_JS = """() => {
       empty = !!shell.querySelector('input[aria-hidden="true"][required], .select__placeholder')
         && !shell.querySelector('.select__single-value, .select__multi-value');
     } else empty = !el.value.trim();
-    if (empty) out.push({id: el.id || el.name || '', label: label(el)});
+    const kind = ['checkbox', 'radio'].includes(type) ? type
+      : el.getAttribute('role') === 'combobox' ? 'select' : 'text';
+    if (empty) out.push({id: el.id || el.name || '', label: label(el), kind});
   }
   return out;
 }"""
@@ -352,8 +354,37 @@ class GreenhouseSession:
     def screenshot(self, path: Path) -> None:
         self.page.screenshot(path=path, full_page=True)
 
-    def missing_required(self) -> list[tuple[str, str]]:
-        return [(m["id"], m["label"]) for m in self.page.evaluate(_MISSING_REQUIRED_JS)]
+    def missing_required(self) -> list[tuple[str, str, str]]:
+        found = self.page.evaluate(_MISSING_REQUIRED_JS)
+        return [(m["id"], m["label"], m["kind"]) for m in found]
+
+    def tick(self, dom_id: str) -> bool:
+        """Tick a box. A styled box hides the real input, so its label is clicked instead."""
+        box = self._box(dom_id)
+        try:
+            box.check(timeout=3_000)
+        except Exception:
+            with contextlib.suppress(Exception):
+                self.page.locator(f"label[for='{dom_id}']").first.click(timeout=3_000)
+        try:
+            return box.is_checked()
+        except Exception:
+            return False
+
+    def wait_for_owner(self, wait_ms: int) -> SubmitResult:
+        """Watch the page while the owner finishes it and clicks Submit (and types any
+        emailed code). Unsent when the form is still there at the end."""
+        for _ in range(max(1, wait_ms // 1_000)):
+            self.page.wait_for_timeout(1_000)
+            with contextlib.suppress(Exception):  # the page is navigating
+                showing = self.page.locator(FORM_READY).count() > 0
+                outcome = submit_outcome(self.page.url, self.page.inner_text("body"), [], showing)
+                if outcome is not None and outcome.confirmed:
+                    return outcome
+        with contextlib.suppress(Exception):
+            if self.page.locator(FORM_READY).count() > 0:
+                return SubmitResult(confirmed=False)
+        return SubmitResult(False, ["the form is gone but no confirmation page was seen"])
 
     def _errors(self) -> list[str]:
         return [t.strip() for t in self.page.locator(_ERRORS).all_inner_texts() if t.strip()]
