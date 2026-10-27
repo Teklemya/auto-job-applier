@@ -15,7 +15,7 @@ from . import browser, inbox, paths, review
 from .answers.bank import AnswerBank
 from .answers.resolver import is_work_auth
 from .answers.writer import make_writer
-from .apply import CLICKED, stage
+from .apply import CLICKED, SHADOW_READY, stage
 from .engines import greenhouse
 from .engines.base import Packet, fill_plan
 from .fit import FitRun, screen_fit
@@ -336,6 +336,7 @@ def _submits_left(profile: Profile, store: JobStore) -> int:
 
 
 CODE_WAIT_MS = 5 * 60_000  # time to type an emailed security code at `aja apply`
+HAND_OVER_MS = 5 * 60_000  # time to finish a blocked form by hand at `aja apply`
 
 
 def _codes(profile: Profile) -> inbox.GmailCodes | None:
@@ -366,6 +367,16 @@ def _apply_one(
     if jd is None:
         jd = fetch_description(job)
         store.save_description(job.id, jd)
+    left = _submits_left(profile, store)
+    held = SHADOW_READY
+    if clicked_before:
+        held = (
+            "ready, not submitted: Submit was clicked on an earlier try, so it may have been"
+            " sent. Check your email; if nothing came, run aja apply "
+            f"{job.id} --retry"
+        )
+    elif profile.settings.submit and left == 0:
+        held = f"ready, not submitted: today's cap of {profile.settings.daily_submit_cap} is used"
     with _greenhouse_session(job) as session:
         session.code_wait_ms = CODE_WAIT_MS if watched else 0
         session.codes = codes
@@ -378,8 +389,21 @@ def _apply_one(
             jd=jd,
             shots_dir=paths.artifacts_dir(),
             writer=make_writer(profile, model),
-            submit=not clicked_before and _submits_left(profile, store) > 0,
+            submit=not clicked_before and left > 0,
+            held=held,
+            hand_over_ms=HAND_OVER_MS if watched else 0,
+            on_hand_over=_tell_owner,
         )
+
+
+def _tell_owner(blockers: list[str]) -> None:
+    typer.echo("Over to you in the browser. Still needed (outlined in red):")
+    for blocker in blockers:
+        typer.echo(f"  - {blocker}")
+    typer.echo(
+        f"Finish them and click Submit; the page is watched for up to {HAND_OVER_MS // 60_000}"
+        " minutes. Leave the window open. Ctrl-C keeps it as a draft."
+    )
 
 
 @app.command("apply")

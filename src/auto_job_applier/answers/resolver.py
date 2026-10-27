@@ -30,6 +30,8 @@ _WORK_AUTH = re.compile(
     r"|\bopt\b(?! (in|out))|\bcpt\b|green card|permanent resid"
 )
 # Questions about a specific status. A generic "yes, I'm authorized" answer must never reach them.
+# Countries under U.S. embargo, named in export-control screening questions.
+_SANCTIONED = re.compile(r"\b(cuba|iran|north korea|syria|crimea)\b")
 _STATUS_SPECIFIC = re.compile(r"citizen|u ?s person|itar|export|h ?1 ?b|green card|permanent")
 _OPEN_ENDED = re.compile(
     r"\b(what|which|describe|explain|elaborate|details?|provide|tell us)\b|^if\b"
@@ -115,7 +117,8 @@ def _profile_value(label: str, p: Profile) -> Value:
             r"major|field of study|discipline",
             lambda: edu and [edu.major, *edu.major_also],
         ),
-        (r"graduation year|year of graduation", lambda: edu and edu.graduation[:4]),
+        # A year the dropdown doesn't list (2026 among 2027-2030) is truthfully "Other".
+        (r"graduation year|year of graduation", lambda: edu and [edu.graduation[:4], "Other"]),
         (r"graduat", lambda: edu and edu.graduation),
         (r"\bgpa\b", lambda: edu and edu.gpa),
         # Greenhouse labels its employment section "Employment: Company name" (T7).
@@ -130,6 +133,7 @@ def _profile_value(label: str, p: Profile) -> Value:
             r"^(how many )?(total )?years of (professional |work )?experience( do you have)?$",
             lambda: f"{e.years_experience:g}",
         ),
+        (r"sexual orientation", lambda: d.sexual_orientation),
         (r"pronoun", lambda: d.pronouns),  # before "gender": "your gender pronouns"
         (r"hispanic|latin", lambda: d.hispanic_latino),
         (r"\brace\b|ethnicity", lambda: d.race_ethnicity),
@@ -178,6 +182,71 @@ def _tie_to_company(label: str, job: Job, p: Profile) -> bool | None:
     return None
 
 
+# A box that only acknowledges or consents ("I have read the privacy notice", "I consent to
+# processing my data") is ticked when the profile allows it. A box that states a fact about the
+# owner ("I certify I am a U.S. citizen", "... at least 18") is never ticked: that is handed over.
+_ACKNOWLEDGES = re.compile(
+    r"acknowledg|\bi have read\b|\bi agree\b|\bagree to\b|\bconsent\b|\bi understand\b"
+    r"|privacy (policy|notice)|terms (and|&) conditions|true (and|,) (complete|accurate)",
+    re.I,
+)
+# Facts about the owner, and commitments the owner makes (relocating, on-site days, travel,
+# checks): never ticked as a mere acknowledgement. Demographic consent has its own setting.
+_STATES_A_FACT = re.compile(
+    r"citizen|resident|veteran|disab|authori[sz]|sponsor|visa|clearance|criminal|convict"
+    r"|felon|\bage\b|\b1[89]\b|years (of age|old)|employed|relative|gender|race|ethnic"
+    r"|orientation|licen[sc]|degree|graduat"
+    r"|relocat|on ?site|in ?office|hybrid|office|travel|commut|background|drug|screening"
+    r"|shift|weekend|overtime|hours|days a week|full ?time|start|availab|willing"
+    r"|demographic|self ?identif|survey",
+    re.I,
+)
+
+
+def acknowledges_only(label: str) -> bool:
+    text = normalize(label)
+    return bool(_ACKNOWLEDGES.search(text)) and not _STATES_A_FACT.search(text)
+
+
+def may_tick(label: str, p: Profile) -> bool:
+    """A required box the owner lets the tool tick: demographic consent by its own setting,
+    otherwise a plain acknowledgement when `tick_acknowledgements` is on."""
+    pref = p.preferences
+    if _CONSENT.search(normalize(label)):
+        return pref.demographic_consent is True
+    return pref.tick_acknowledgements and acknowledges_only(label)
+
+
+_ORDINALS = ["first", "second", "third"]
+_ORDINAL_CHOICE = re.compile(r"\b(first|second|third) (choice|preference) of (interest|area|team)")
+_START_WINDOW = re.compile(r"(able|available|can you|could you) (to )?start|start (between|by)")
+_IN_OFFICE = re.compile(r"hybrid|\bin ?office\b|\bon ?site\b|office attendance|days a week in")
+_CONSENT = re.compile(r"consent.*(demographic|self identif|survey)|(demographic|survey).*consent")
+_MONTH_YEAR = re.compile(
+    r"\b(?:(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.? )?(20\d\d)\b"
+)
+
+
+def _starts_by(earliest: str | None, end: str) -> bool | None:
+    """Can the owner start by `end` ("YYYY-MM")? A bare year decides only across years."""
+    if earliest is None:
+        return None
+    if len(earliest) == 4:
+        return True if earliest < end[:4] else False if earliest > end[:4] else None
+    return earliest <= end
+
+
+def _window_end(label: str) -> str | None:
+    """The last month a question's date range allows ("... and September 2027" -> 2027-09;
+    a bare year means its December)."""
+    found = _MONTH_YEAR.findall(label)
+    if not found:
+        return None
+    month, year = found[-1]
+    months = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
+    return f"{year}-{months.index(month) + 1 if month else 12:02d}"
+
+
 def _month(yyyy_mm: str | None) -> list[str] | None:
     """A month as forms spell it, in the order to try: "August", "Aug", "08", "8"."""
     if not yyyy_mm or len(yyyy_mm) < 7:
@@ -192,8 +261,32 @@ def _preference_value(label: str, field: FormField, p: Profile) -> Value | objec
     pref = p.preferences
     if label.startswith(("employment ", "education ")):
         return None  # "Employment: Start date" is a past job's date, not the preferred start
+    yes_no = field.kind in ("select", "radio", "checkbox", "checkboxes")
+    # "By clicking Acknowledge, you acknowledge ..." with one box labelled "Acknowledge"
+    lone_box = field.kind == "checkboxes" and len(field.options) == 1
+    if lone_box and (_CONSENT.search(label) or _ACKNOWLEDGES.search(label)):
+        return field.options[0] if may_tick(f"{label} {field.options[0]}", p) else None
+    if yes_no and (end := _window_end(label)) and _START_WINDOW.search(label):
+        return _starts_by(pref.earliest_start, end)
     if re.search(r"start date|when can you start|available to start|earliest start", label):
         return pref.start_date
+    if field.kind == "checkbox" and _CONSENT.search(label):
+        return pref.demographic_consent is True
+    if yes_no and _IN_OFFICE.search(label) and not _OPEN_ENDED.search(label):
+        return pref.in_office_ok
+    if (n := _ORDINAL_CHOICE.search(label)) and field.options and pref.engineering_focus:
+        # "Out of the following areas, select your first (second) choice of interest": your
+        # list in order, counting only the ones this form offers.
+        offered = [m for v in pref.engineering_focus if (m := match_option(v, field))]
+        offered = list(dict.fromkeys(offered))
+        nth = _ORDINALS.index(n[1])
+        return offered[nth] if nth < len(offered) else None
+    if re.search(
+        r"(type|area|kind|field) of (software )?engineering|engineering (area|focus)", label
+    ):
+        return pref.engineering_focus or None
+    if re.search(r"preferred (office|work )?location|office location|which office", label):
+        return pref.office_locations or None
     if re.search(
         r"(how|where) did you (first )?(hear|find|learn|come across)|how you (heard|found|learned)",
         label,
@@ -245,7 +338,27 @@ def _work_auth_value(label: str, p: Profile) -> Value:
         return wa.authorized_to_work_us
     if re.search(r"visa status|immigration status|current visa", label):
         return wa.visa_status
+    if "citizen" in label and _SANCTIONED.search(label):
+        return _tied_to_listed_country(label, wa.citizenships, p.address.country)
     return None
+
+
+def _tied_to_listed_country(label: str, citizenships: list[str], home: str) -> bool | None:
+    """ "Are you a citizen or resident of Cuba, Iran, North Korea, Syria or Crimea?" Yes when
+    a citizenship or the address country is named; the U.S. is the one doing the sanctioning,
+    so "U.S. sanctions" never counts. A country named only as the home of a listed region
+    ("Crimea region of Ukraine") can't be decided from the profile."""
+    if not citizenships:
+        return None
+    mine = {normalize(c) for c in [*citizenships, home] if c} - {
+        "united states", "united states of america", "us", "usa", "u s", "u s a"
+    }  # fmt: skip
+    for country in mine:
+        if re.search(rf"\b(region|regions) of {re.escape(country)}\b", label):
+            return None
+        if re.search(rf"\b{re.escape(country)}\b", label):
+            return True
+    return False
 
 
 def _negated(text: str) -> bool:

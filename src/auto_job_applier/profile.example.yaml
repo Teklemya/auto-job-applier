@@ -27,6 +27,7 @@ work_authorization:
   requires_sponsorship_now: false
   requires_sponsorship_future: false
   visa_status: F-1 OPT
+  citizenships: []  # e.g. ["Ethiopia"]; for "citizen or resident of Cuba, Iran, ...?"
   # Option sentences you approve, word for word, for questions that aren't Yes/No.
   # `aja review` prints the line to add after you answer one.
   approved_answers: []
@@ -61,6 +62,7 @@ demographics:
   hispanic_latino: Decline to self-identify
   veteran_status: Decline to self-identify
   disability_status: Decline to self-identify
+  sexual_orientation: Decline to self-identify  # or ["Heterosexual", "Straight"]
   pronouns: null  # e.g. He/Him
 
 preferences:
@@ -69,6 +71,12 @@ preferences:
   heard_about_us: ["Job board", "Online job board", "Job posting", "Other"]
   salary_floor: 120000
   willing_to_relocate: true
+  earliest_start: 2027-01        # "able to start between January and September 2027?" -> Yes
+  in_office_ok: true             # hybrid / in-office requirement
+  engineering_focus: ["Software Engineering", "Backend", "Full Stack"]  # first offered wins
+  office_locations: ["Seattle", "San Francisco", "New York"]
+  demographic_consent: true      # tick "I consent to ... demographic data" boxes
+  tick_acknowledgements: true    # tick "I acknowledge / have read / agree" boxes, never fact claims
 
 # Screening locations. Remote always passes. Omit a list to keep the built-in defaults
 # (see `Targeting` in profile.py); set it to replace them.

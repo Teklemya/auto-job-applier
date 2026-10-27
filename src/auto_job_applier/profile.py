@@ -57,6 +57,10 @@ class WorkAuthorization(_Strict):
     requires_sponsorship_now: bool
     requires_sponsorship_future: bool
     visa_status: str | None = None  # e.g. "F-1 OPT"; only used if a form asks directly
+    # Countries you are a citizen of, for "are you a citizen or resident of Cuba, Iran, ...?"
+    # (export-control screening). Residence comes from the address. Left empty, such
+    # questions go to review.
+    citizenships: list[str] = []
     # Exact option sentences the owner approved for questions whose options aren't Yes/No,
     # e.g. "I am authorized to work for any employer in the country ...". Used verbatim.
     approved_answers: list[str] = []
@@ -134,15 +138,37 @@ class Demographics(_Strict):
     hispanic_latino: str = DECLINE
     veteran_status: str = DECLINE
     disability_status: str = DECLINE
+    # One answer, or spellings tried in order: ["Heterosexual", "Straight"].
+    sexual_orientation: str | list[str] = DECLINE
     pronouns: str | None = None  # e.g. "He/Him"; left empty, a required question goes to review
 
 
 class Preferences(_Strict):
     start_date: str = "Two weeks after offer"
+    # The first month you could start ("2027-01"), for "are you able to start between January
+    # and September 2027?". Left empty, such questions go to review.
+    earliest_start: str | None = None
     # One answer, or choices tried in order until the form offers one.
     heard_about_us: str | list[str] = ["Job board", "Online job board", "Job posting", "Other"]
     salary_floor: int = 120_000  # never answer below this (R12)
     willing_to_relocate: bool = True
+    # "Would you be able to work hybrid / in the office?" Left empty, it goes to review.
+    in_office_ok: bool | None = None
+    # Ranked choices for "what type of engineering are you interested in?" and "preferred
+    # office location?": the first one a form offers is picked.
+    engineering_focus: list[str] = []
+    office_locations: list[str] = []
+    # Tick "I consent to <company> processing my demographic survey answers". Left empty,
+    # a required consent box goes to review.
+    demographic_consent: bool | None = None
+    # Tick required boxes that only acknowledge or consent ("I have read the privacy notice").
+    # Boxes that state a fact about you ("I certify I am a citizen") are never ticked.
+    tick_acknowledgements: bool = True
+
+    @field_validator("earliest_start", mode="before")
+    @classmethod
+    def _year_month(cls, v: object) -> object:
+        return None if v is None else to_year_month(str(v))
 
 
 class Targeting(_Strict):

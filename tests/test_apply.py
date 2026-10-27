@@ -9,6 +9,7 @@ from typer.testing import CliRunner
 from auto_job_applier import apply, cli, fit
 from auto_job_applier.answers import resolver
 from auto_job_applier.answers.bank import AnswerBank
+from auto_job_applier.answers.resolver import may_tick
 from auto_job_applier.engines import greenhouse
 from auto_job_applier.engines.base import PageField, SubmitResult
 from auto_job_applier.models import ATS, FormField, Job, Status
@@ -122,6 +123,11 @@ class FakeSession:
         self.hides = hides or {}
         self.filled = []
         self.screenshots = []
+        self.empty_on_page = []  # (dom id, label, kind) the page shows required but empty
+        self.ticked = []
+        self.highlighted = []
+        self.handed_over = None
+        self.owner_does = SubmitResult(confirmed=False)  # what the owner does when handed over
 
     def fields(self):
         done = {a.dom_id for a in self.filled}
@@ -139,6 +145,22 @@ class FakeSession:
     def page_blockers(self):
         return self._page_blockers
 
+    def missing_required(self):
+        return [e for e in self.empty_on_page if e[0] not in self.ticked]
+
+    def tick(self, dom_id):
+        if dom_id in self.cant_fill:
+            return False
+        self.ticked.append(dom_id)
+        return True
+
+    def highlight(self, dom_ids):
+        self.highlighted = dom_ids
+
+    def wait_for_owner(self, wait_ms):
+        self.handed_over = wait_ms
+        return self.owner_does
+
     def screenshot(self, path):
         self.screenshots.append(path)
 
@@ -147,7 +169,7 @@ class FakeSession:
         return self.submits
 
 
-def staged(profile, store, tmp_path, session, submit=False):
+def staged(profile, store, tmp_path, session, submit=False, **kw):
     store.upsert_many([LYFT])
     job = store.list()[0]
     apply.stage(
@@ -159,6 +181,7 @@ def staged(profile, store, tmp_path, session, submit=False):
         jd="Build rides.",
         shots_dir=tmp_path / "shots",
         submit=submit,
+        **kw,
     )
     return store.get(job.id)
 
@@ -374,10 +397,12 @@ def live(home, data, cap=3):
     (home / "profile.yaml").write_text(yaml.safe_dump(data))
 
 
-def ready_greenhouse(monkeypatch, sessions):
+def ready_greenhouse(monkeypatch, sessions, session_type=None, empty_on_page=()):
     @contextmanager
     def fake_session(job):
-        session = FakeSession(first_name_only(), submits=SubmitResult(confirmed=True))
+        kind = session_type or FakeSession
+        session = kind(first_name_only(), submits=SubmitResult(confirmed=True))
+        session.empty_on_page = list(empty_on_page)
         sessions.append(session)
         yield session
 
@@ -544,6 +569,7 @@ def test_a_click_is_remembered_after_a_refill_rewrites_the_reason(
     result = runner.invoke(cli.app, ["apply", str(job_id)])
     assert result.exit_code == 0, result.output
     assert sessions[0].submitted == 0
+    assert "--retry" in result.output and "shadow mode" not in result.output
 
 
 def test_unconfirmed_clicks_count_toward_the_daily_cap(
@@ -563,8 +589,9 @@ def test_unconfirmed_clicks_count_toward_the_daily_cap(
     second = queue(home_with_profile, brex)
     sessions = []
     ready_greenhouse(monkeypatch, sessions)
-    runner.invoke(cli.app, ["apply", str(second)])
+    result = runner.invoke(cli.app, ["apply", str(second)])
     assert sessions[0].submitted == 0
+    assert "today's cap of 1 is used" in result.output
 
 
 def test_retry_submits_a_click_that_did_not_go_through_and_waits_for_a_code(
@@ -583,3 +610,162 @@ def test_retry_submits_a_click_that_did_not_go_through_and_waits_for_a_code(
     assert sessions[0].submitted == 1
     assert sessions[0].code_wait_ms == cli.CODE_WAIT_MS
     assert "APPLIED" in result.output
+
+
+def test_a_required_box_the_reader_missed_keeps_the_form_a_draft(profile, store, tmp_path):
+    session = FakeSession(first_name_only(), submits=SubmitResult(confirmed=True))
+    session.empty_on_page = [("vet", "Protected Veteran Status", "select")]
+    job = staged(profile, store, tmp_path, session, submit=True)
+    assert session.submitted == 0
+    assert job.status is Status.STAGED
+    assert store.get_packet(job.id).blockers == [apply.EMPTY_ON_PAGE + "Protected Veteran Status"]
+
+
+def test_a_field_already_flagged_is_not_listed_twice(profile, store, tmp_path):
+    major = PageField("discipline--0", FormField("Education: Discipline", "select", True))
+    session = FakeSession([major], cant_fill={"discipline--0"})
+    session.empty_on_page = [("discipline--0", "Discipline", "select")]
+    job = staged(profile, store, tmp_path, session)
+    assert store.get_packet(job.id).blockers == ["could not fill: Education: Discipline"]
+
+
+def test_a_page_rejection_was_not_sent_so_it_does_not_lock_the_job(profile, store, tmp_path):
+    rejected = SubmitResult(False, [apply.REJECTED + "This field is required."])
+    job = staged(profile, store, tmp_path, FakeSession(first_name_only(), submits=rejected), True)
+    assert job.status is Status.STAGED
+    assert not job.reason.startswith(apply.CLICKED)
+
+
+def test_a_page_that_cannot_be_checked_is_not_submitted(profile, store, tmp_path):
+    class Unreadable(FakeSession):
+        def missing_required(self):
+            raise RuntimeError("page navigated")
+
+    session = Unreadable(first_name_only(), submits=SubmitResult(confirmed=True))
+    job = staged(profile, store, tmp_path, session, submit=True)
+    assert (session.submitted, job.status) == (0, Status.STAGED)
+
+
+ACK = "By checking this box, I acknowledge I have read the Candidate Privacy Notice."
+CITIZEN = "I certify that I am a U.S. citizen."
+
+
+def test_acknowledgement_boxes_are_ticked_and_the_form_is_submitted(profile, store, tmp_path):
+    session = FakeSession(first_name_only(), submits=SubmitResult(confirmed=True))
+    session.empty_on_page = [("ack", ACK, "checkbox")]
+    job = staged(profile, store, tmp_path, session, submit=True)
+    assert session.ticked == ["ack"]
+    assert (session.submitted, job.status) == (1, Status.APPLIED)
+
+
+def test_a_box_that_states_a_fact_is_never_ticked(profile, store, tmp_path):
+    session = FakeSession(first_name_only(), submits=SubmitResult(confirmed=True))
+    session.empty_on_page = [("cit", CITIZEN, "checkbox")]
+    job = staged(profile, store, tmp_path, session, submit=True)
+    assert session.ticked == []
+    assert job.status is Status.STAGED
+
+
+def test_ticking_can_be_turned_off(profile, store, tmp_path):
+    profile.preferences.tick_acknowledgements = False
+    session = FakeSession(first_name_only())
+    session.empty_on_page = [("ack", ACK, "checkbox")]
+    staged(profile, store, tmp_path, session, submit=True)
+    assert session.ticked == []
+
+
+@pytest.mark.parametrize(
+    "label, ticks",
+    [
+        (ACK, True),
+        ("I agree to the Terms and Conditions", True),
+        ("I consent to Twilio processing my responses to the demographic surveys", True),
+        ("I certify the information provided is true and complete", True),
+        (CITIZEN, False),
+        ("I acknowledge that I am at least 18 years of age", False),
+        ("I acknowledge I will require visa sponsorship", False),
+        ("I am interested in other roles", False),
+        ("I understand this role requires working on-site 5 days a week", False),
+        ("I acknowledge I am willing to relocate to Austin, TX", False),
+        ("I consent to a background check and drug screening", False),
+    ],
+)
+def test_which_boxes_count_as_acknowledgements(profile, label, ticks):
+    profile.preferences.demographic_consent = True
+    assert may_tick(label, profile) is ticks
+
+
+def test_demographic_consent_follows_its_own_setting(profile):
+    label = "I consent to Twilio processing my responses to the demographic surveys"
+    profile.preferences.demographic_consent = False
+    assert not may_tick(label, profile)
+    profile.preferences.demographic_consent = None
+    assert not may_tick(label, profile)
+
+
+def test_a_closed_posting_is_never_handed_over(profile, store, tmp_path):
+    session = FakeSession([])
+    job = staged(profile, store, tmp_path, session, submit=True, hand_over_ms=600_000)
+    assert session.handed_over is None
+    assert job.status is Status.STAGED and not job.reason.startswith(apply.CLICKED)
+
+
+def test_a_hand_over_cut_short_is_never_submitted_again(
+    home_with_profile, example_profile_data, monkeypatch
+):
+    live(home_with_profile, example_profile_data, cap=3)
+    job_id = queue(home_with_profile, LYFT)
+
+    class Interrupted(FakeSession):
+        def wait_for_owner(self, wait_ms):
+            raise KeyboardInterrupt
+
+    sessions = []
+    ready_greenhouse(monkeypatch, sessions, session_type=Interrupted, empty_on_page=[
+        ("cit", CITIZEN, "checkbox")
+    ])  # fmt: skip
+    runner.invoke(cli.app, ["apply", str(job_id)])
+    s = JobStore(home_with_profile / "jobs.db")
+    assert s.get(job_id).reason == apply.HANDED_OVER
+    s.close()
+    sessions.clear()
+    ready_greenhouse(monkeypatch, sessions)
+    runner.invoke(cli.app, ["apply", str(job_id)])
+    assert sessions[0].submitted == 0
+
+
+def test_a_blocked_form_is_handed_to_the_owner_who_submits_it(profile, store, tmp_path):
+    session = FakeSession(first_name_only())
+    session.empty_on_page = [("cit", CITIZEN, "checkbox")]
+    session.owner_does = SubmitResult(confirmed=True)
+    told = []
+    job = staged(
+        profile, store, tmp_path, session, submit=True, hand_over_ms=600_000,
+        on_hand_over=told.append,
+    )  # fmt: skip
+    assert session.highlighted == ["cit"]
+    assert told == [[apply.EMPTY_ON_PAGE + CITIZEN]]
+    assert (job.status, job.reason) == (Status.APPLIED, apply.BY_OWNER)
+    assert session.submitted == 0  # the owner clicked, not the tool
+
+
+def test_a_hand_over_the_owner_leaves_alone_stays_a_draft(profile, store, tmp_path):
+    session = FakeSession(first_name_only())
+    session.empty_on_page = [("cit", CITIZEN, "checkbox")]
+    job = staged(profile, store, tmp_path, session, submit=True, hand_over_ms=600_000)
+    assert job.status is Status.STAGED and not job.reason.startswith(apply.CLICKED)
+
+
+def test_a_form_left_without_confirmation_is_never_resent(profile, store, tmp_path):
+    session = FakeSession(first_name_only())
+    session.empty_on_page = [("cit", CITIZEN, "checkbox")]
+    session.owner_does = SubmitResult(False, ["the form is gone"])
+    job = staged(profile, store, tmp_path, session, submit=True, hand_over_ms=600_000)
+    assert (job.status, job.reason) == (Status.FAILED, apply.OWNER_UNCLEAR)
+
+
+def test_shadow_mode_never_hands_over(profile, store, tmp_path):
+    session = FakeSession(first_name_only())
+    session.empty_on_page = [("cit", CITIZEN, "checkbox")]
+    staged(profile, store, tmp_path, session, submit=False, hand_over_ms=600_000)
+    assert session.handed_over is None

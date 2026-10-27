@@ -224,7 +224,7 @@ def test_remaining_fields_go_to_the_llm_in_one_call(profile, bank):
 
 def test_llm_value_outside_options_is_rejected(profile, bank):
     model = FakeLLM(llm_says((0, "Sure", True)))
-    [a] = run([F("Comfortable on-site?", "select", options=YES_NO)], profile, bank, model)
+    [a] = run([F("Comfortable with travel?", "select", options=YES_NO)], profile, bank, model)
     assert not a.confident
 
 
@@ -793,3 +793,222 @@ def test_a_bare_graduation_year_answers_the_year_but_not_the_month(profile, bank
     )
     assert year.value == "2024"
     assert not month.confident
+
+
+START_WINDOW = (
+    "The start date for this role falls in 2027. Are you able to start between January 2027 "
+    "and September 2027?"
+)
+HYBRID = (
+    "Our internship roles may be remote or hybrid depending on team and location. Hybrid roles "
+    "are based in San Francisco, Palo Alto, or Seattle and require some in-office attendance for "
+    "the duration of the internship, based on team needs. Would you be able to meet this "
+    "requirement if matched to a hybrid role?"
+)
+CONSENT = (
+    "By checking this box, I consent to Acme collecting, storing, and processing my responses "
+    "to the demographic data surveys above."
+)
+
+
+def test_a_start_window_is_yes_when_the_earliest_start_falls_inside_it(profile, bank):
+    q = F(START_WINDOW, "select", options=YES_NO)
+    profile.preferences.earliest_start = "2027-01"
+    [a] = run([q], profile, bank)
+    assert (a.value, a.source) == ("Yes", "preferences")
+    profile.preferences.earliest_start = "2027-11"
+    [a] = run([q], profile, bank)
+    assert a.value == "No"
+
+
+def test_a_start_window_without_an_earliest_start_goes_to_review(profile, bank):
+    q = F(START_WINDOW, "select", options=YES_NO)
+    profile.preferences.earliest_start = None
+    [a] = run([q], profile, bank, model=FakeLLM(llm_says((0, "Yes", False))))
+    assert not a.confident
+
+
+def test_hybrid_requirement_comes_from_the_preference(profile, bank):
+    q = F(HYBRID, "select", options=YES_NO)
+    profile.preferences.in_office_ok = True
+    [a] = run([q], profile, bank)
+    assert (a.value, a.source) == ("Yes", "preferences")
+
+
+def test_engineering_focus_and_office_take_the_first_choice_offered(profile, bank):
+    profile.preferences.engineering_focus = ["Software Engineering", "Backend"]
+    profile.preferences.office_locations = ["Seattle", "San Francisco"]
+    focus = F(
+        "What type of engineering are you primarily interested in?",
+        "select",
+        options=["Mobile", "Security", "Backend", "Full Stack", "Web"],
+    )
+    office = F(
+        "What is your preferred office location?",
+        "select",
+        options=["San Francisco", "Palo Alto", "Seattle", "Remote"],
+    )
+    a, b = run([focus, office], profile, bank)
+    assert (a.value, b.value) == ("Backend", "Seattle")
+
+
+def test_demographic_consent_box_is_ticked_when_the_owner_agreed(profile, bank):
+    q = F(CONSENT, "checkbox")
+    profile.preferences.demographic_consent = True
+    [a] = run([q], profile, bank)
+    assert (a.value, a.confident) == ("Yes", True)
+
+
+SANCTIONS = (
+    "Please indicate whether you are either a citizen or resident of any of the following "
+    "countries: Cuba, Iran, North Korea, Syria or Crimea Region of Ukraine."
+)
+
+
+def test_sanctioned_countries_question_comes_from_citizenships_and_address(profile, bank):
+    q = F(SANCTIONS, "select", options=YES_NO)
+    profile.work_authorization.citizenships = ["Ethiopia"]
+    [a] = run([q], profile, bank)
+    assert (a.value, a.source) == ("No", "profile")
+    profile.work_authorization.citizenships = ["Iran"]
+    [a] = run([q], profile, bank)
+    assert a.value == "Yes"
+
+
+def test_sanctioned_countries_question_without_citizenships_goes_to_review(profile, bank):
+    profile.work_authorization.citizenships = []
+    [a] = run([F(SANCTIONS, "select", options=YES_NO)], profile, bank)
+    assert not a.confident
+
+
+def test_sexual_orientation_takes_the_first_spelling_offered(profile, bank):
+    q = F(
+        "Voluntary Self-Identification of Sexual Orientation",
+        "select",
+        options=["Bisexual", "Heterosexual", "Homosexual", "I don't wish to answer"],
+    )
+    [a] = run([q], profile, bank)
+    assert a.value == "I don't wish to answer"
+    profile.demographics.sexual_orientation = ["Straight", "Heterosexual"]
+    [a] = run([q], profile, bank)
+    assert a.value == "Heterosexual"
+
+
+def test_a_set_of_boxes_takes_the_first_heard_about_choice_offered(profile, bank):
+    profile.preferences.heard_about_us = ["Job board", "Other"]
+    q = F(
+        "How did you hear about Twilio?",
+        "checkboxes",
+        options=["Careers Website", "LinkedIn", "Indeed", "Other"],
+    )
+    [a] = run([q], profile, bank)
+    assert (a.value, a.source) == ("Other", "preferences")
+
+
+def test_a_lone_acknowledge_box_is_ticked(profile, bank):
+    q = F(
+        'By clicking the "Acknowledge" button, you acknowledge that Acme processes data in '
+        "accordance with the Applicant Privacy Policy.",
+        "checkboxes",
+        options=["Acknowledge"],
+    )
+    [a] = run([q], profile, bank)
+    assert (a.value, a.confident) == ("Acknowledge", True)
+
+
+def test_a_lone_box_that_states_a_fact_is_not_ticked(profile, bank):
+    q = F("I certify that I am a U.S. citizen.", "checkboxes", options=["I agree"])
+    [a] = run([q], profile, bank, model=FakeLLM(llm_says((0, "I agree", False))))
+    assert not a.confident
+
+
+AREAS = ["Frontend Engineer", "Backend Engineer", "Mobile Engineer", "Platform Engineer"]
+
+
+@pytest.mark.parametrize(
+    "which, expected", [("first", "Backend Engineer"), ("second", "Platform Engineer")]
+)
+def test_ranked_interest_questions_follow_the_engineering_focus_order(
+    profile, bank, which, expected
+):
+    profile.preferences.engineering_focus = ["Software Engineering", "Backend", "Platform"]
+    q = F(
+        f"Out of the following four areas, please select your {which} choice of interest.",
+        "select",
+        options=AREAS,
+    )
+    [a] = run([q], profile, bank)
+    assert (a.value, a.source) == (expected, "preferences")
+
+
+def test_a_ranked_choice_past_the_list_goes_to_review(profile, bank):
+    profile.preferences.engineering_focus = ["Backend"]
+    q = F("Please select your second choice of interest.", "select", options=AREAS)
+    [a] = run([q], profile, bank, model=FakeLLM(llm_says((0, "Mobile Engineer", False))))
+    assert not a.confident
+
+
+def test_a_graduation_year_the_form_does_not_list_is_other(profile, bank):
+    profile.education[0].graduation = "2026-05"
+    years = ["2027", "2028", "2029", "2030", "Other"]
+    [a] = run([F("What is your expected graduation year?", "select", options=years)], profile, bank)
+    assert a.value == "Other"
+    [a] = run([F("Expected graduation year", "select", options=["2026", "Other"])], profile, bank)
+    assert a.value == "2026"
+    [a] = run([F("Graduation year")], profile, bank)
+    assert a.value == "2026"
+
+
+@pytest.mark.parametrize(
+    "question, citizenships, expected",
+    [
+        (SANCTIONS, ["Ethiopia"], "No"),
+        (
+            "Are you a citizen or resident of Cuba, Iran, North Korea, Syria, or any country "
+            "subject to comprehensive United States sanctions?",
+            ["Ethiopia"],
+            "No",
+        ),
+        (SANCTIONS, ["Ukraine"], None),  # a Crimea resident? the profile can't say
+        (SANCTIONS, ["Syria"], "Yes"),
+    ],
+)
+def test_sanctions_question_edge_cases(profile, bank, question, citizenships, expected):
+    profile.work_authorization.citizenships = citizenships
+    [a] = run([F(question, "select", options=YES_NO)], profile, bank)
+    assert (a.value if a.confident else None) == expected
+
+
+def test_site_reliability_is_not_an_on_site_question(profile, bank):
+    profile.preferences.in_office_ok = True
+    q = F("Do you have experience in site reliability engineering?", "select", options=YES_NO)
+    [a] = run([q], profile, bank, model=FakeLLM(llm_says((0, "Yes", False))))
+    assert a.source != "preferences"
+
+
+def test_past_tense_start_is_not_a_start_window(profile, bank):
+    profile.preferences.earliest_start = "2027-01"
+    q = F("Did you start in 2020 at your current employer?", "select", options=YES_NO)
+    [a] = run([q], profile, bank, model=FakeLLM(llm_says((0, "Yes", False))))
+    assert a.source != "preferences"
+
+
+@pytest.mark.parametrize(
+    "earliest, expected", [("2026", "Yes"), ("2027", None), ("2028", "No"), ("2027-01", "Yes")]
+)
+def test_a_bare_year_earliest_start_decides_only_across_years(profile, bank, earliest, expected):
+    profile.preferences.earliest_start = earliest
+    q = F(START_WINDOW, "select", options=YES_NO)
+    [a] = run([q], profile, bank, model=FakeLLM(llm_says((0, "Yes", False))))
+    assert (a.value if a.confident else None) == expected
+
+
+def test_a_lone_consent_box_follows_demographic_consent(profile, bank):
+    q = F(
+        "By checking this box, I consent to Acme processing my demographic survey responses.",
+        "checkboxes",
+        options=["I consent"],
+    )
+    profile.preferences.demographic_consent = False
+    [a] = run([q], profile, bank, model=FakeLLM(llm_says((0, "I consent", False))))
+    assert not a.confident

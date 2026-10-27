@@ -20,7 +20,7 @@ from ..answers.bank import normalize, same_option
 from ..geo import US_STATES
 from ..jd_fetch import api_url, get_json
 from ..models import FormField, Job
-from .base import Action, PageField, SubmitResult
+from .base import REJECTED, Action, PageField, SubmitResult
 
 _SECTIONS = {"employment--container": "Employment", "education--container": "Education"}
 # Not questions: the paste-instead-of-upload boxes, the captcha token, the phone country search.
@@ -58,6 +58,9 @@ class _FormParser(HTMLParser):
         self._div_depth = 0
         self._section: tuple[str, int] | None = None  # (name, div depth where it opened)
         self._disabled_depth: int | None = None  # inside a greyed-out dropdown
+        # A question shown as a set of boxes ("How did you hear about us? Click all that
+        # apply"): one field, its legend the label, each box an option.
+        self._group: dict | None = None
 
     def handle_starttag(self, tag, attrs):
         a = {k: v or "" for k, v in attrs}
@@ -76,14 +79,37 @@ class _FormParser(HTMLParser):
             # The group label ("Resume/CV") comes before the button's own "Attach" label.
             if a.get("id", "").startswith("upload-label-"):
                 self._start_label(a["id"].removeprefix("upload-label-"), "div")
+        elif tag == "fieldset" and a.get("id"):
+            self._group = {
+                "id": a["id"],
+                "kind": "checkboxes",
+                "required": a.get("aria-required") == "true",
+                "section": self._section[0] if self._section else None,
+                "option_ids": [],
+            }
+        elif tag == "legend" and self._group:
+            self._start_label(self._group["id"], "legend")
         elif tag == "label" and a.get("for"):
             self._start_label(a["for"], "label")
+        elif tag == "input" and self._in_group(a):
+            self._group["option_ids"].append(a["id"])
         elif tag in ("input", "textarea") and a.get("id"):
             self._add_input(tag, a)
+
+    def _in_group(self, a: dict) -> bool:
+        return bool(
+            self._group
+            and a.get("type") in ("checkbox", "radio")
+            and a.get("id", "").startswith(self._group["id"] + "_")
+        )
 
     def handle_endtag(self, tag):
         if self._label_for is not None and tag == self._label_tag:
             self._end_label()
+        if tag == "fieldset" and self._group:
+            if self._group["option_ids"]:
+                self.inputs.append(self._group)
+            self._group = None
         if tag == "div":
             if self._section and self._section[1] == self._div_depth:
                 self._section = None
@@ -144,13 +170,16 @@ def extract_fields(page_html: str, api: dict | None = None) -> list[PageField]:
         required = i["required"]
         if i["kind"] == "file":
             required = parser.file_required.get(dom_id, False)
+        choices = options.get(dom_id, [])
+        if i["kind"] == "checkboxes":
+            choices = [parser.labels.get(o, "") for o in i["option_ids"]]
         if i["section"]:
             label = f"{i['section']}: {label}"
         field = FormField(
             label=html_lib.unescape(label),
             kind=i["kind"],
             required=required,
-            options=options.get(dom_id, []),
+            options=choices,
         )
         fields.append(PageField(dom_id, field))
     return fields
@@ -196,7 +225,7 @@ def submit_outcome(
     if code_asked:
         return SubmitResult(False, [CODE_ASKED])
     if errors:
-        return SubmitResult(False, [f"page rejected the submit: {e}" for e in errors])
+        return SubmitResult(False, [f"{REJECTED}{e}" for e in errors])
     return None
 
 
@@ -214,6 +243,62 @@ _CONFIRMED = re.compile(
 # "A verification code was sent to you@x.com. ... enter the 8-character code" + "Security code"
 _SECURITY_CODE = re.compile(r"(security|verification) code|enter the \d+.character code", re.I)
 SUBMIT_WAIT_MS = 30_000
+# Required inputs still empty: unticked boxes, radio groups with nothing picked, blank text, and
+# dropdowns still showing their placeholder (the choice sits beside the input, not in it). File
+# inputs are left to the field reader, which knows about the paste-text alternative.
+_MISSING_REQUIRED_JS = """() => {
+  const tidy = t => (t || '').replace(/\\s+/g, ' ').replace(/\\*\\s*$/, '').trim();
+  const label = el => {
+    const byFor = el.id && document.querySelector(`label[for="${CSS.escape(el.id)}"]`);
+    let text = tidy((byFor && byFor.innerText) || el.getAttribute('aria-label')
+      || (el.closest('label, fieldset, .checkbox, .field-wrapper') || {}).innerText || el.id);
+    if (['checkbox', 'radio'].includes((el.type || '').toLowerCase())) {
+      // "I agree" means nothing alone: the question above it says what is agreed to.
+      const legend = el.closest('fieldset') && el.closest('fieldset').querySelector('legend');
+      const wrapper = el.closest('.field-wrapper');
+      const question = tidy((legend && legend.innerText) || (wrapper && wrapper.innerText));
+      if (question && !question.includes(text)) text = `${question} ${text}`;
+      else if (question) text = question;
+    }
+    return text.slice(0, 400);
+  };
+  const shown = el => {
+    const box = el.closest('label, fieldset, .checkbox, .field-wrapper, .select') || el;
+    return box.getClientRects().length > 0 && !el.disabled;
+  };
+  const out = [], seenRadio = new Set();
+  const form = document.querySelector('#application-form, form') || document;
+  for (const el of form.querySelectorAll('input, textarea, select')) {
+    const required = el.required || el.getAttribute('aria-required') === 'true';
+    const type = (el.type || '').toLowerCase();
+    if (!required || ['hidden', 'file', 'search', 'submit', 'button'].includes(type)) continue;
+    if (el.getAttribute('aria-hidden') === 'true') continue;  // a dropdown's stand-in input
+    if (!shown(el)) continue;
+    let empty;
+    if (type === 'checkbox') empty = !el.checked;
+    else if (type === 'radio') {
+      if (seenRadio.has(el.name)) continue;
+      seenRadio.add(el.name);
+      empty = !form.querySelector(`input[type=radio][name="${CSS.escape(el.name)}"]:checked`);
+    } else if (el.getAttribute('role') === 'combobox') {
+      // React Select shows a placeholder, and keeps a hidden required input, only while empty.
+      const shell = el.closest('.select-shell') || el.parentElement;
+      empty = !!shell.querySelector('input[aria-hidden="true"][required], .select__placeholder')
+        && !shell.querySelector('.select__single-value, .select__multi-value');
+    } else empty = !el.value.trim();
+    const kind = ['checkbox', 'radio'].includes(type) ? type
+      : el.getAttribute('role') === 'combobox' ? 'select' : 'text';
+    if (empty) out.push({id: el.id || el.name || '', label: label(el), kind});
+  }
+  for (const fs of form.querySelectorAll('fieldset[aria-required="true"]')) {
+    if (!fs.getClientRects().length || fs.querySelector('input:checked')) continue;
+    const legend = fs.querySelector('legend');
+    const text = ((legend && legend.innerText) || fs.id).replace(/\\s+/g, ' ');
+    out.push({id: fs.id, label: text.replace(/\\*\\s*$/, '').trim().slice(0, 160),
+              kind: 'checkboxes'});
+  }
+  return out;
+}"""
 
 
 def code_newly_asked(before: str, after: str) -> bool:
@@ -274,9 +359,20 @@ class GreenhouseSession:
             self._box(f"{a.dom_id}_text").fill(a.value)
         elif a.kind == "check":
             box.check()
+        elif a.kind == "tick_option":
+            return self._tick_option(a.dom_id, a.value)
         elif a.kind == "choose":
             return self._choose(box, a.dom_id, [a.value, *a.alternatives])
         return True
+
+    def _tick_option(self, group_id: str, option: str) -> bool:
+        """Tick the one box in a group whose label is `option`."""
+        labels = self._box(group_id).locator("label")
+        texts = [" ".join(t.split()) for t in labels.all_inner_texts()]
+        if texts.count(option) != 1:
+            return False
+        target = labels.nth(texts.index(option)).get_attribute("for")
+        return bool(target) and self.tick(target)
 
     def _options_for(self, box, dom_id: str, query: str):
         """Type `query` into the React combobox and return (option locator, option texts)."""
@@ -313,6 +409,38 @@ class GreenhouseSession:
 
     def screenshot(self, path: Path) -> None:
         self.page.screenshot(path=path, full_page=True)
+
+    def missing_required(self) -> list[tuple[str, str, str]]:
+        found = self.page.evaluate(_MISSING_REQUIRED_JS)
+        return [(m["id"], m["label"], m["kind"]) for m in found]
+
+    def tick(self, dom_id: str) -> bool:
+        """Tick a box. A styled box hides the real input, so its label is clicked instead."""
+        box = self._box(dom_id)
+        try:
+            box.check(timeout=3_000)
+        except Exception:
+            with contextlib.suppress(Exception):
+                self.page.locator(f"label[for='{dom_id}']").first.click(timeout=3_000)
+        try:
+            return box.is_checked()
+        except Exception:
+            return False
+
+    def wait_for_owner(self, wait_ms: int) -> SubmitResult:
+        """Watch the page while the owner finishes it and clicks Submit (and types any
+        emailed code). Unsent when the form is still there at the end."""
+        for _ in range(max(1, wait_ms // 1_000)):
+            self.page.wait_for_timeout(1_000)
+            with contextlib.suppress(Exception):  # the page is navigating
+                showing = self.page.locator(FORM_READY).count() > 0
+                outcome = submit_outcome(self.page.url, self.page.inner_text("body"), [], showing)
+                if outcome is not None and outcome.confirmed:
+                    return outcome
+        with contextlib.suppress(Exception):
+            if self.page.locator(FORM_READY).count() > 0:
+                return SubmitResult(confirmed=False)
+        return SubmitResult(False, ["the form is gone but no confirmation page was seen"])
 
     def _errors(self) -> list[str]:
         return [t.strip() for t in self.page.locator(_ERRORS).all_inner_texts() if t.strip()]

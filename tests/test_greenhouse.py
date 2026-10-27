@@ -1,8 +1,10 @@
 import json
 
+import pytest
 from conftest import FIXTURES
 
 from auto_job_applier.engines import greenhouse
+from auto_job_applier.engines.base import Action
 
 GH = FIXTURES / "greenhouse"
 
@@ -227,3 +229,124 @@ def test_a_job_description_about_security_codes_does_not_hide_the_code_prompt():
     prompt = jd + " A verification code was sent to j@x.com. Security code"
     assert not greenhouse.code_newly_asked(jd, jd)
     assert greenhouse.code_newly_asked(jd, prompt)
+
+
+MISSING_FORM = """
+<form id="application-form">
+  <div class="field-wrapper"><label for="first_name">First Name*</label>
+    <input id="first_name" aria-required="true" value="Jane"></div>
+  <div class="field-wrapper"><label for="phone">Phone*</label>
+    <input id="phone" aria-required="true" value=""></div>
+  <div class="field-wrapper"><label for="vet">Protected Veteran Status*</label>
+    <div class="select-shell"><div class="select__placeholder">Select...</div>
+    <input id="vet" role="combobox" aria-required="true">
+    <input required tabindex="-1" aria-hidden="true" value=""></div></div>
+  <div class="field-wrapper"><label for="gender">Gender*</label>
+    <div class="select-shell"><div class="select__single-value">Male</div>
+    <input id="gender" role="combobox" aria-required="true"></div></div>
+  <div class="checkbox"><input type="checkbox" id="consent" required>
+    <span>By checking this box, I consent to Twilio processing my responses *</span></div>
+  <div class="checkbox"><label><input type="checkbox" id="ok" required checked> OK</label></div>
+  <input id="optional_note" value="">
+  <div style="display:none"><label for="hidden_q">Hidden*</label>
+    <input id="hidden_q" aria-required="true"></div>
+</form>
+"""
+
+
+def test_required_inputs_left_empty_are_found_on_the_page():
+    sync_api = pytest.importorskip("playwright.sync_api")
+    try:
+        with sync_api.sync_playwright() as pw:
+            browser = pw.chromium.launch()
+            page = browser.new_page()
+            page.set_content(MISSING_FORM)
+            found = [m[:2] for m in greenhouse.GreenhouseSession(page, None).missing_required()]
+            browser.close()
+    except sync_api.Error as e:  # no browser installed here
+        pytest.skip(str(e))
+    assert found == [
+        ("phone", "Phone"),
+        ("vet", "Protected Veteran Status"),
+        ("consent", "By checking this box, I consent to Twilio processing my responses"),
+    ]
+
+
+def _box(group, n, text):
+    return (
+        f'<div class="checkbox__wrapper"><div class="checkbox__input">'
+        f'<input type="checkbox" id="{group}_{n}" name="{group}" value="{n}"></div>'
+        f'<label for="{group}_{n}">{text}</label></div>'
+    )
+
+
+# As Twilio's form shows them: a fieldset per question, the question in its legend.
+HEARD = "question_65614028[]"
+ACK = "question_65614029[]"
+BOX_GROUPS = (
+    '<form id="application-form"><div class="field-wrapper">'
+    f'<fieldset class="checkbox" id="{HEARD}" aria-required="true">'
+    '<legend class="label checkbox__description">How did you hear about Twilio?'
+    '<span aria-hidden="true">*</span></legend>'
+    + "".join(_box(HEARD, n, t) for n, t in enumerate(["Careers Website", "LinkedIn", "Other"]))
+    + '</fieldset></div><div class="field-wrapper">'
+    f'<fieldset class="checkbox" id="{ACK}" aria-required="true">'
+    '<legend class="label checkbox__description">By clicking the "Acknowledge" button, you '
+    "acknowledge that Twilio processes data in accordance with the Applicant Privacy Policy."
+    "</legend>" + _box(ACK, 0, "Acknowledge") + "</fieldset></div></form>"
+)
+
+
+def test_a_set_of_boxes_is_one_question_with_options():
+    heard, ack = greenhouse.extract_fields(BOX_GROUPS)
+    assert (heard.dom_id, heard.field.label, heard.field.kind) == (
+        HEARD,
+        "How did you hear about Twilio?",
+        "checkboxes",
+    )
+    assert heard.field.required
+    assert heard.field.options == ["Careers Website", "LinkedIn", "Other"]
+    assert ack.field.options == ["Acknowledge"]
+
+
+def test_boxes_are_ticked_one_at_a_time_in_the_browser():
+    sync_api = pytest.importorskip("playwright.sync_api")
+    try:
+        with sync_api.sync_playwright() as pw:
+            browser = pw.chromium.launch()
+            page = browser.new_page()
+            page.set_content(BOX_GROUPS)
+            session = greenhouse.GreenhouseSession(page, None)
+            before = [m[0] for m in session.missing_required()]
+            plan = [Action("tick_option", HEARD, "Other"), Action("tick_option", ACK, "Lie")]
+            rejected = session.fill(plan)
+            checked = page.eval_on_selector_all("input:checked", "els => els.map(e => e.id)")
+            browser.close()
+    except sync_api.Error as e:  # no browser installed here
+        pytest.skip(str(e))
+    assert before == [HEARD, ACK]
+    assert checked == [f"{HEARD}_2"]
+    assert rejected == [ACK]
+
+
+QUESTION_ABOVE_BOX = """
+<form id="application-form"><div class="field-wrapper">
+  <div class="label">I certify that I am a U.S. citizen.*</div>
+  <div class="checkbox"><input type="checkbox" id="cert" required><label for="cert">I agree</label>
+  </div></div></form>
+"""
+
+
+def test_a_box_is_described_by_the_question_above_it():
+    sync_api = pytest.importorskip("playwright.sync_api")
+    try:
+        with sync_api.sync_playwright() as pw:
+            browser = pw.chromium.launch()
+            page = browser.new_page()
+            page.set_content(QUESTION_ABOVE_BOX)
+            [(_, label, kind)] = greenhouse.GreenhouseSession(page, None).missing_required()
+            browser.close()
+    except sync_api.Error as e:  # no browser installed here
+        pytest.skip(str(e))
+    assert kind == "checkbox"
+    assert "U.S. citizen" in label and "I agree" in label
