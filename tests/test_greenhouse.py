@@ -350,3 +350,18 @@ def test_a_box_is_described_by_the_question_above_it():
         pytest.skip(str(e))
     assert kind == "checkbox"
     assert "U.S. citizen" in label and "I agree" in label
+
+
+def test_a_form_taken_down_is_a_closed_posting_not_an_error():
+    import urllib.error
+
+    from auto_job_applier.jd_fetch import PostingClosed
+    from auto_job_applier.models import ATS, Job
+
+    def gone(url):
+        raise urllib.error.HTTPError(url, 404, "Not Found", {}, None)
+
+    job = Job(url="https://job-boards.greenhouse.io/affirm/jobs/1", company="Affirm",
+              role="SWE", ats=ATS.GREENHOUSE)  # fmt: skip
+    with pytest.raises(PostingClosed):
+        greenhouse.fetch_questions(job, get=gone)

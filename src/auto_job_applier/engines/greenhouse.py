@@ -11,6 +11,7 @@ import contextlib
 import html as html_lib
 import random
 import re
+import urllib.error
 from collections.abc import Callable
 from datetime import UTC, datetime
 from html.parser import HTMLParser
@@ -18,7 +19,7 @@ from pathlib import Path
 
 from ..answers.bank import normalize, same_option
 from ..geo import US_STATES
-from ..jd_fetch import api_url, get_json
+from ..jd_fetch import FetchError, PostingClosed, api_url, get_json
 from ..models import FormField, Job
 from .base import REJECTED, Action, PageField, SubmitResult
 
@@ -203,7 +204,16 @@ def pick_option(value: str, options: list[str]) -> str | None:
 
 
 def fetch_questions(job: Job, get: Callable[[str], dict] = get_json) -> dict:
-    return get(api_url(job) + "?questions=true")
+    """The posting's questions and options. A posting taken down since its description was
+    saved answers 404: it is closed, not worth retrying every run."""
+    try:
+        return get(api_url(job) + "?questions=true")
+    except urllib.error.HTTPError as e:
+        if e.code in (404, 410):
+            raise PostingClosed(f"application form not found ({e.code})") from e
+        raise FetchError(f"{api_url(job)}: HTTP {e.code}") from e
+    except (OSError, ValueError) as e:
+        raise FetchError(f"{api_url(job)}: {e}") from e
 
 
 CODE_ASKED = "email security code: the application is not sent until it is entered"
