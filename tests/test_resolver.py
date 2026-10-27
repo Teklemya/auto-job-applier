@@ -892,3 +892,31 @@ def test_sexual_orientation_takes_the_first_spelling_offered(profile, bank):
     profile.demographics.sexual_orientation = ["Straight", "Heterosexual"]
     [a] = run([q], profile, bank)
     assert a.value == "Heterosexual"
+
+
+def test_a_set_of_boxes_takes_the_first_heard_about_choice_offered(profile, bank):
+    profile.preferences.heard_about_us = ["Job board", "Other"]
+    q = F(
+        "How did you hear about Twilio?",
+        "checkboxes",
+        options=["Careers Website", "LinkedIn", "Indeed", "Other"],
+    )
+    [a] = run([q], profile, bank)
+    assert (a.value, a.source) == ("Other", "preferences")
+
+
+def test_a_lone_acknowledge_box_is_ticked(profile, bank):
+    q = F(
+        'By clicking the "Acknowledge" button, you acknowledge that Acme processes data in '
+        "accordance with the Applicant Privacy Policy.",
+        "checkboxes",
+        options=["Acknowledge"],
+    )
+    [a] = run([q], profile, bank)
+    assert (a.value, a.confident) == ("Acknowledge", True)
+
+
+def test_a_lone_box_that_states_a_fact_is_not_ticked(profile, bank):
+    q = F("I certify that I am a U.S. citizen.", "checkboxes", options=["I agree"])
+    [a] = run([q], profile, bank, model=FakeLLM(llm_says((0, "I agree", False))))
+    assert not a.confident

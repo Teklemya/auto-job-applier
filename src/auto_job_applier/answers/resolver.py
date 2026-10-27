@@ -181,6 +181,26 @@ def _tie_to_company(label: str, job: Job, p: Profile) -> bool | None:
     return None
 
 
+# A box that only acknowledges or consents ("I have read the privacy notice", "I consent to
+# processing my data") is ticked when the profile allows it. A box that states a fact about the
+# owner ("I certify I am a U.S. citizen", "... at least 18") is never ticked: that is handed over.
+_ACKNOWLEDGES = re.compile(
+    r"acknowledg|\bi have read\b|\bi agree\b|\bagree to\b|\bconsent\b|\bi understand\b"
+    r"|privacy (policy|notice)|terms (and|&) conditions|true (and|,) (complete|accurate)",
+    re.I,
+)
+_STATES_A_FACT = re.compile(
+    r"citizen|resident|veteran|disab|authori[sz]|sponsor|visa|clearance|criminal|convict"
+    r"|felon|\bage\b|\b1[89]\b|years (of age|old)|employed|relative|gender|race|ethnic"
+    r"|orientation|licen[sc]|degree|graduat",
+    re.I,
+)
+
+
+def acknowledges_only(label: str) -> bool:
+    return bool(_ACKNOWLEDGES.search(label)) and not _STATES_A_FACT.search(label)
+
+
 _START_WINDOW = re.compile(r"(able|available|can you|could you) (to )?start|start (between|by|in)")
 _IN_OFFICE = re.compile(r"hybrid|in.office|on.?site|office attendance|days a week in")
 _CONSENT = re.compile(r"consent.*(demographic|self identif|survey)|(demographic|survey).*consent")
@@ -214,7 +234,11 @@ def _preference_value(label: str, field: FormField, p: Profile) -> Value | objec
     pref = p.preferences
     if label.startswith(("employment ", "education ")):
         return None  # "Employment: Start date" is a past job's date, not the preferred start
-    yes_no = field.kind in ("select", "radio", "checkbox")
+    yes_no = field.kind in ("select", "radio", "checkbox", "checkboxes")
+    # "By clicking Acknowledge, you acknowledge ..." with one box labelled "Acknowledge"
+    lone_box = field.kind == "checkboxes" and len(field.options) == 1
+    if lone_box and pref.tick_acknowledgements and acknowledges_only(f"{label} {field.options[0]}"):
+        return field.options[0]
     if yes_no and (end := _window_end(label)) and _START_WINDOW.search(label):
         return None if pref.earliest_start is None else pref.earliest_start <= end
     if re.search(r"start date|when can you start|available to start|earliest start", label):

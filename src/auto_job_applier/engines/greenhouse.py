@@ -58,6 +58,9 @@ class _FormParser(HTMLParser):
         self._div_depth = 0
         self._section: tuple[str, int] | None = None  # (name, div depth where it opened)
         self._disabled_depth: int | None = None  # inside a greyed-out dropdown
+        # A question shown as a set of boxes ("How did you hear about us? Click all that
+        # apply"): one field, its legend the label, each box an option.
+        self._group: dict | None = None
 
     def handle_starttag(self, tag, attrs):
         a = {k: v or "" for k, v in attrs}
@@ -76,14 +79,37 @@ class _FormParser(HTMLParser):
             # The group label ("Resume/CV") comes before the button's own "Attach" label.
             if a.get("id", "").startswith("upload-label-"):
                 self._start_label(a["id"].removeprefix("upload-label-"), "div")
+        elif tag == "fieldset" and a.get("id"):
+            self._group = {
+                "id": a["id"],
+                "kind": "checkboxes",
+                "required": a.get("aria-required") == "true",
+                "section": self._section[0] if self._section else None,
+                "option_ids": [],
+            }
+        elif tag == "legend" and self._group:
+            self._start_label(self._group["id"], "legend")
         elif tag == "label" and a.get("for"):
             self._start_label(a["for"], "label")
+        elif tag == "input" and self._in_group(a):
+            self._group["option_ids"].append(a["id"])
         elif tag in ("input", "textarea") and a.get("id"):
             self._add_input(tag, a)
+
+    def _in_group(self, a: dict) -> bool:
+        return bool(
+            self._group
+            and a.get("type") in ("checkbox", "radio")
+            and a.get("id", "").startswith(self._group["id"] + "_")
+        )
 
     def handle_endtag(self, tag):
         if self._label_for is not None and tag == self._label_tag:
             self._end_label()
+        if tag == "fieldset" and self._group:
+            if self._group["option_ids"]:
+                self.inputs.append(self._group)
+            self._group = None
         if tag == "div":
             if self._section and self._section[1] == self._div_depth:
                 self._section = None
@@ -144,13 +170,16 @@ def extract_fields(page_html: str, api: dict | None = None) -> list[PageField]:
         required = i["required"]
         if i["kind"] == "file":
             required = parser.file_required.get(dom_id, False)
+        choices = options.get(dom_id, [])
+        if i["kind"] == "checkboxes":
+            choices = [parser.labels.get(o, "") for o in i["option_ids"]]
         if i["section"]:
             label = f"{i['section']}: {label}"
         field = FormField(
             label=html_lib.unescape(label),
             kind=i["kind"],
             required=required,
-            options=options.get(dom_id, []),
+            options=choices,
         )
         fields.append(PageField(dom_id, field))
     return fields
@@ -252,6 +281,13 @@ _MISSING_REQUIRED_JS = """() => {
       : el.getAttribute('role') === 'combobox' ? 'select' : 'text';
     if (empty) out.push({id: el.id || el.name || '', label: label(el), kind});
   }
+  for (const fs of form.querySelectorAll('fieldset[aria-required="true"]')) {
+    if (!fs.getClientRects().length || fs.querySelector('input:checked')) continue;
+    const legend = fs.querySelector('legend');
+    const text = ((legend && legend.innerText) || fs.id).replace(/\\s+/g, ' ');
+    out.push({id: fs.id, label: text.replace(/\\*\\s*$/, '').trim().slice(0, 160),
+              kind: 'checkboxes'});
+  }
   return out;
 }"""
 
@@ -314,9 +350,20 @@ class GreenhouseSession:
             self._box(f"{a.dom_id}_text").fill(a.value)
         elif a.kind == "check":
             box.check()
+        elif a.kind == "tick_option":
+            return self._tick_option(a.dom_id, a.value)
         elif a.kind == "choose":
             return self._choose(box, a.dom_id, [a.value, *a.alternatives])
         return True
+
+    def _tick_option(self, group_id: str, option: str) -> bool:
+        """Tick the one box in a group whose label is `option`."""
+        labels = self._box(group_id).locator("label")
+        texts = [" ".join(t.split()) for t in labels.all_inner_texts()]
+        if texts.count(option) != 1:
+            return False
+        target = labels.nth(texts.index(option)).get_attribute("for")
+        return bool(target) and self.tick(target)
 
     def _options_for(self, box, dom_id: str, query: str):
         """Type `query` into the React combobox and return (option locator, option texts)."""

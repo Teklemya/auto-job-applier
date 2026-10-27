@@ -5,7 +5,6 @@ Engines read the page; this module answers it. The packet is stored with every d
 """
 
 import contextlib
-import re
 from collections.abc import Callable
 from dataclasses import replace
 from datetime import datetime
@@ -13,7 +12,7 @@ from pathlib import Path
 from typing import Protocol
 
 from .answers.bank import AnswerBank
-from .answers.resolver import Writer, gate, resolve
+from .answers.resolver import Writer, acknowledges_only, gate, resolve
 from .engines.base import REJECTED, Action, Packet, PageField, SubmitResult, fill_plan
 from .llm import LLM
 from .models import Job, ResolvedAnswer, Status
@@ -30,25 +29,6 @@ UNCONFIRMED = CLICKED + "no confirmation page; check your email before applying 
 EMPTY_ON_PAGE = "required but empty on the page: "
 BY_OWNER = CLICKED + "submitted by the owner, confirmation page seen"
 OWNER_UNCLEAR = CLICKED + "the owner left the form without a confirmation page; check your email"
-# A box that only acknowledges or consents ("I have read the privacy notice", "I consent to
-# processing my data") is ticked when the profile allows it. A box that states a fact about the
-# owner ("I certify I am a U.S. citizen", "... at least 18") is never ticked: that is handed over.
-_ACKNOWLEDGES = re.compile(
-    r"acknowledg|\bi have read\b|\bi agree\b|\bagree to\b|\bconsent\b|\bi understand\b"
-    r"|privacy (policy|notice)|terms (and|&) conditions|true (and|,) (complete|accurate)",
-    re.I,
-)
-_STATES_A_FACT = re.compile(
-    r"citizen|resident|veteran|disab|authori[sz]|sponsor|visa|clearance|criminal|convict"
-    r"|felon|\bage\b|\b1[89]\b|years (of age|old)|employed|relative|gender|race|ethnic"
-    r"|orientation|licen[sc]|degree|graduat",
-    re.I,
-)
-
-
-def acknowledges_only(label: str) -> bool:
-    return bool(_ACKNOWLEDGES.search(label)) and not _STATES_A_FACT.search(label)
-
 
 MAX_PASSES = 3  # fill rounds while answers keep revealing new fields
 

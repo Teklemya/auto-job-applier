@@ -39,6 +39,8 @@ def fill_plan(fields: list[PageField], answers: list[ResolvedAnswer]) -> list[Ac
         if kind == "checkbox":
             if a.value.strip().lower() in ("yes", "true"):
                 plan.append(Action("check", pf.dom_id, ""))
+        elif kind == "checkboxes":  # one box of a group: never several on a guess
+            plan.append(Action("tick_option", pf.dom_id, a.value))
         elif kind == "file":
             # The writer returns cover letters as text; paste it when it isn't a file on disk.
             action = "upload" if Path(a.value).is_file() else "paste"

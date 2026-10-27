@@ -4,6 +4,7 @@ import pytest
 from conftest import FIXTURES
 
 from auto_job_applier.engines import greenhouse
+from auto_job_applier.engines.base import Action
 
 GH = FIXTURES / "greenhouse"
 
@@ -269,3 +270,60 @@ def test_required_inputs_left_empty_are_found_on_the_page():
         ("vet", "Protected Veteran Status"),
         ("consent", "By checking this box, I consent to Twilio processing my responses"),
     ]
+
+
+def _box(group, n, text):
+    return (
+        f'<div class="checkbox__wrapper"><div class="checkbox__input">'
+        f'<input type="checkbox" id="{group}_{n}" name="{group}" value="{n}"></div>'
+        f'<label for="{group}_{n}">{text}</label></div>'
+    )
+
+
+# As Twilio's form shows them: a fieldset per question, the question in its legend.
+HEARD = "question_65614028[]"
+ACK = "question_65614029[]"
+BOX_GROUPS = (
+    '<form id="application-form"><div class="field-wrapper">'
+    f'<fieldset class="checkbox" id="{HEARD}" aria-required="true">'
+    '<legend class="label checkbox__description">How did you hear about Twilio?'
+    '<span aria-hidden="true">*</span></legend>'
+    + "".join(_box(HEARD, n, t) for n, t in enumerate(["Careers Website", "LinkedIn", "Other"]))
+    + '</fieldset></div><div class="field-wrapper">'
+    f'<fieldset class="checkbox" id="{ACK}" aria-required="true">'
+    '<legend class="label checkbox__description">By clicking the "Acknowledge" button, you '
+    "acknowledge that Twilio processes data in accordance with the Applicant Privacy Policy."
+    "</legend>" + _box(ACK, 0, "Acknowledge") + "</fieldset></div></form>"
+)
+
+
+def test_a_set_of_boxes_is_one_question_with_options():
+    heard, ack = greenhouse.extract_fields(BOX_GROUPS)
+    assert (heard.dom_id, heard.field.label, heard.field.kind) == (
+        HEARD,
+        "How did you hear about Twilio?",
+        "checkboxes",
+    )
+    assert heard.field.required
+    assert heard.field.options == ["Careers Website", "LinkedIn", "Other"]
+    assert ack.field.options == ["Acknowledge"]
+
+
+def test_boxes_are_ticked_one_at_a_time_in_the_browser():
+    sync_api = pytest.importorskip("playwright.sync_api")
+    try:
+        with sync_api.sync_playwright() as pw:
+            browser = pw.chromium.launch()
+            page = browser.new_page()
+            page.set_content(BOX_GROUPS)
+            session = greenhouse.GreenhouseSession(page, None)
+            before = [m[0] for m in session.missing_required()]
+            plan = [Action("tick_option", HEARD, "Other"), Action("tick_option", ACK, "Lie")]
+            rejected = session.fill(plan)
+            checked = page.eval_on_selector_all("input:checked", "els => els.map(e => e.id)")
+            browser.close()
+    except sync_api.Error as e:  # no browser installed here
+        pytest.skip(str(e))
+    assert before == [HEARD, ACK]
+    assert checked == [f"{HEARD}_2"]
+    assert rejected == [ACK]

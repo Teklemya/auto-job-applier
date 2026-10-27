@@ -54,7 +54,7 @@ class FormField:
     """One visible form field, as any ATS engine extracts it."""
 
     label: str
-    kind: str = "text"  # text | textarea | select | radio | checkbox | file
+    kind: str = "text"  # text | textarea | select | radio | checkbox | checkboxes | file
     required: bool = False
     options: list[str] = field(default_factory=list)  # select/radio choices
     # Type-to-search box: `options` are only the ones seen while typing, not the full list.

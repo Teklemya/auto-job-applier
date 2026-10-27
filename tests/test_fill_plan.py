@@ -65,3 +65,10 @@ def test_unconfident_answers_are_left_blank_for_the_owner():
 def test_fields_and_answers_must_line_up():
     with pytest.raises(ValueError):
         fill_plan([page_field("a"), page_field("b")], [answer(page_field("a"), "x")])
+
+
+def test_a_box_group_ticks_the_one_chosen_option():
+    pf = page_field("question_1[]", kind="checkboxes")
+    assert fill_plan([pf], [answer(pf, "Other")]) == [
+        Action("tick_option", "question_1[]", "Other")
+    ]
