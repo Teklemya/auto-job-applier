@@ -58,6 +58,10 @@ class Packet:
     blockers: list[str]  # labels of required fields without a confident answer, or page issues
 
 
+# The page refused the click with field errors, so nothing was sent: not a click that counts.
+REJECTED = "page rejected the submit: "
+
+
 @dataclass
 class SubmitResult:
     """What the page showed after Submit was clicked (S3)."""

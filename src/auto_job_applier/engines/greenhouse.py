@@ -20,7 +20,7 @@ from ..answers.bank import normalize, same_option
 from ..geo import US_STATES
 from ..jd_fetch import api_url, get_json
 from ..models import FormField, Job
-from .base import Action, PageField, SubmitResult
+from .base import REJECTED, Action, PageField, SubmitResult
 
 _SECTIONS = {"employment--container": "Employment", "education--container": "Education"}
 # Not questions: the paste-instead-of-upload boxes, the captcha token, the phone country search.
@@ -196,7 +196,7 @@ def submit_outcome(
     if code_asked:
         return SubmitResult(False, [CODE_ASKED])
     if errors:
-        return SubmitResult(False, [f"page rejected the submit: {e}" for e in errors])
+        return SubmitResult(False, [f"{REJECTED}{e}" for e in errors])
     return None
 
 
@@ -214,6 +214,44 @@ _CONFIRMED = re.compile(
 # "A verification code was sent to you@x.com. ... enter the 8-character code" + "Security code"
 _SECURITY_CODE = re.compile(r"(security|verification) code|enter the \d+.character code", re.I)
 SUBMIT_WAIT_MS = 30_000
+# Required inputs still empty: unticked boxes, radio groups with nothing picked, blank text, and
+# dropdowns still showing their placeholder (the choice sits beside the input, not in it). File
+# inputs are left to the field reader, which knows about the paste-text alternative.
+_MISSING_REQUIRED_JS = """() => {
+  const label = el => {
+    const byFor = el.id && document.querySelector(`label[for="${CSS.escape(el.id)}"]`);
+    const text = (byFor && byFor.innerText) || el.getAttribute('aria-label')
+      || (el.closest('label, fieldset, .checkbox, .field-wrapper') || {}).innerText || el.id;
+    return text.replace(/\\s+/g, ' ').replace(/\\*\\s*$/, '').trim().slice(0, 160);
+  };
+  const shown = el => {
+    const box = el.closest('label, fieldset, .checkbox, .field-wrapper, .select') || el;
+    return box.getClientRects().length > 0 && !el.disabled;
+  };
+  const out = [], seenRadio = new Set();
+  const form = document.querySelector('#application-form, form') || document;
+  for (const el of form.querySelectorAll('input, textarea, select')) {
+    const required = el.required || el.getAttribute('aria-required') === 'true';
+    const type = (el.type || '').toLowerCase();
+    if (!required || ['hidden', 'file', 'search', 'submit', 'button'].includes(type)) continue;
+    if (el.getAttribute('aria-hidden') === 'true') continue;  // a dropdown's stand-in input
+    if (!shown(el)) continue;
+    let empty;
+    if (type === 'checkbox') empty = !el.checked;
+    else if (type === 'radio') {
+      if (seenRadio.has(el.name)) continue;
+      seenRadio.add(el.name);
+      empty = !form.querySelector(`input[type=radio][name="${CSS.escape(el.name)}"]:checked`);
+    } else if (el.getAttribute('role') === 'combobox') {
+      // React Select shows a placeholder, and keeps a hidden required input, only while empty.
+      const shell = el.closest('.select-shell') || el.parentElement;
+      empty = !!shell.querySelector('input[aria-hidden="true"][required], .select__placeholder')
+        && !shell.querySelector('.select__single-value, .select__multi-value');
+    } else empty = !el.value.trim();
+    if (empty) out.push({id: el.id || el.name || '', label: label(el)});
+  }
+  return out;
+}"""
 
 
 def code_newly_asked(before: str, after: str) -> bool:
@@ -313,6 +351,9 @@ class GreenhouseSession:
 
     def screenshot(self, path: Path) -> None:
         self.page.screenshot(path=path, full_page=True)
+
+    def missing_required(self) -> list[tuple[str, str]]:
+        return [(m["id"], m["label"]) for m in self.page.evaluate(_MISSING_REQUIRED_JS)]
 
     def _errors(self) -> list[str]:
         return [t.strip() for t in self.page.locator(_ERRORS).all_inner_texts() if t.strip()]

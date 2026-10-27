@@ -1,5 +1,6 @@
 import json
 
+import pytest
 from conftest import FIXTURES
 
 from auto_job_applier.engines import greenhouse
@@ -227,3 +228,44 @@ def test_a_job_description_about_security_codes_does_not_hide_the_code_prompt():
     prompt = jd + " A verification code was sent to j@x.com. Security code"
     assert not greenhouse.code_newly_asked(jd, jd)
     assert greenhouse.code_newly_asked(jd, prompt)
+
+
+MISSING_FORM = """
+<form id="application-form">
+  <div class="field-wrapper"><label for="first_name">First Name*</label>
+    <input id="first_name" aria-required="true" value="Jane"></div>
+  <div class="field-wrapper"><label for="phone">Phone*</label>
+    <input id="phone" aria-required="true" value=""></div>
+  <div class="field-wrapper"><label for="vet">Protected Veteran Status*</label>
+    <div class="select-shell"><div class="select__placeholder">Select...</div>
+    <input id="vet" role="combobox" aria-required="true">
+    <input required tabindex="-1" aria-hidden="true" value=""></div></div>
+  <div class="field-wrapper"><label for="gender">Gender*</label>
+    <div class="select-shell"><div class="select__single-value">Male</div>
+    <input id="gender" role="combobox" aria-required="true"></div></div>
+  <div class="checkbox"><input type="checkbox" id="consent" required>
+    <span>By checking this box, I consent to Twilio processing my responses *</span></div>
+  <div class="checkbox"><label><input type="checkbox" id="ok" required checked> OK</label></div>
+  <input id="optional_note" value="">
+  <div style="display:none"><label for="hidden_q">Hidden*</label>
+    <input id="hidden_q" aria-required="true"></div>
+</form>
+"""
+
+
+def test_required_inputs_left_empty_are_found_on_the_page():
+    sync_api = pytest.importorskip("playwright.sync_api")
+    try:
+        with sync_api.sync_playwright() as pw:
+            browser = pw.chromium.launch()
+            page = browser.new_page()
+            page.set_content(MISSING_FORM)
+            found = greenhouse.GreenhouseSession(page, None).missing_required()
+            browser.close()
+    except sync_api.Error as e:  # no browser installed here
+        pytest.skip(str(e))
+    assert found == [
+        ("phone", "Phone"),
+        ("vet", "Protected Veteran Status"),
+        ("consent", "By checking this box, I consent to Twilio processing my responses"),
+    ]

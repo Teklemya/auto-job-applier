@@ -12,7 +12,7 @@ from typing import Protocol
 
 from .answers.bank import AnswerBank
 from .answers.resolver import Writer, gate, resolve
-from .engines.base import Action, Packet, PageField, SubmitResult, fill_plan
+from .engines.base import REJECTED, Action, Packet, PageField, SubmitResult, fill_plan
 from .llm import LLM
 from .models import Job, ResolvedAnswer, Status
 from .profile import Profile
@@ -25,6 +25,7 @@ SHADOW_READY = "shadow mode: every required field answered, not submitted"
 CLICKED = "submit clicked: "
 AUTO_SUBMITTED = CLICKED + "confirmation page seen"
 UNCONFIRMED = CLICKED + "no confirmation page; check your email before applying again"
+EMPTY_ON_PAGE = "required but empty on the page: "
 MAX_PASSES = 3  # fill rounds while answers keep revealing new fields
 
 
@@ -39,6 +40,11 @@ class FormSession(Protocol):
 
     def page_blockers(self) -> list[str]:
         """Problems on the page itself, e.g. a visible CAPTCHA."""
+        ...
+
+    def missing_required(self) -> list[tuple[str, str]]:
+        """(dom id, label) of required inputs the page still shows empty, including ones the
+        field reader never saw (a checkbox without a plain label)."""
         ...
 
     def screenshot(self, path: Path) -> None: ...
@@ -120,6 +126,19 @@ def stage(
         if pf.dom_id in rejected and pf.field.required
     ]
     packet.blockers += session.page_blockers()
+    # Checked on the page itself before Submit: a field the reader missed is still a blocker.
+    flagged = rejected | {
+        pf.dom_id
+        for pf, a in zip(packet.fields, packet.answers, strict=True)
+        if pf.field.required and (not a.confident or a.value is None)
+    }
+    try:
+        empty = session.missing_required()
+    except Exception:  # can't tell: never submit on a guess
+        empty = [("", "could not check the page for empty fields")]
+    packet.blockers += [
+        f"{EMPTY_ON_PAGE}{label}" for dom_id, label in empty if dom_id not in flagged
+    ]
     shots_dir.mkdir(parents=True, exist_ok=True)
     session.screenshot(shots_dir / f"{job.id}-{datetime.now():%Y%m%d-%H%M%S}.png")
     store.save_packet(job.id, packet)
@@ -137,7 +156,10 @@ def stage(
     elif result.problems:
         packet.blockers = result.problems
         store.save_packet(job.id, packet)
-        store.set_status(job.id, Status.STAGED, CLICKED + _draft_reason(packet))
+        not_sent = all(p.startswith(REJECTED) for p in result.problems)
+        store.set_status(
+            job.id, Status.STAGED, ("" if not_sent else CLICKED) + _draft_reason(packet)
+        )
     else:
         store.set_status(job.id, Status.FAILED, UNCONFIRMED)
     with contextlib.suppress(Exception):

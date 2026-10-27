@@ -122,6 +122,7 @@ class FakeSession:
         self.hides = hides or {}
         self.filled = []
         self.screenshots = []
+        self.empty_on_page = []  # (dom id, label) the page shows required but empty
 
     def fields(self):
         done = {a.dom_id for a in self.filled}
@@ -138,6 +139,9 @@ class FakeSession:
 
     def page_blockers(self):
         return self._page_blockers
+
+    def missing_required(self):
+        return self.empty_on_page
 
     def screenshot(self, path):
         self.screenshots.append(path)
@@ -585,3 +589,39 @@ def test_retry_submits_a_click_that_did_not_go_through_and_waits_for_a_code(
     assert sessions[0].submitted == 1
     assert sessions[0].code_wait_ms == cli.CODE_WAIT_MS
     assert "APPLIED" in result.output
+
+
+def test_a_required_box_the_reader_missed_keeps_the_form_a_draft(profile, store, tmp_path):
+    session = FakeSession(first_name_only(), submits=SubmitResult(confirmed=True))
+    session.empty_on_page = [("ack", "I acknowledge the privacy notice")]
+    job = staged(profile, store, tmp_path, session, submit=True)
+    assert session.submitted == 0
+    assert job.status is Status.STAGED
+    assert store.get_packet(job.id).blockers == [
+        apply.EMPTY_ON_PAGE + "I acknowledge the privacy notice"
+    ]
+
+
+def test_a_field_already_flagged_is_not_listed_twice(profile, store, tmp_path):
+    major = PageField("discipline--0", FormField("Education: Discipline", "select", True))
+    session = FakeSession([major], cant_fill={"discipline--0"})
+    session.empty_on_page = [("discipline--0", "Discipline")]
+    job = staged(profile, store, tmp_path, session)
+    assert store.get_packet(job.id).blockers == ["could not fill: Education: Discipline"]
+
+
+def test_a_page_rejection_was_not_sent_so_it_does_not_lock_the_job(profile, store, tmp_path):
+    rejected = SubmitResult(False, [apply.REJECTED + "This field is required."])
+    job = staged(profile, store, tmp_path, FakeSession(first_name_only(), submits=rejected), True)
+    assert job.status is Status.STAGED
+    assert not job.reason.startswith(apply.CLICKED)
+
+
+def test_a_page_that_cannot_be_checked_is_not_submitted(profile, store, tmp_path):
+    class Unreadable(FakeSession):
+        def missing_required(self):
+            raise RuntimeError("page navigated")
+
+    session = Unreadable(first_name_only(), submits=SubmitResult(confirmed=True))
+    job = staged(profile, store, tmp_path, session, submit=True)
+    assert (session.submitted, job.status) == (0, Status.STAGED)
