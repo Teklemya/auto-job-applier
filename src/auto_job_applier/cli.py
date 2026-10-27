@@ -11,7 +11,7 @@ from typing import Annotated
 
 import typer
 
-from . import browser, inbox, paths, review
+from . import browser, inbox, paths, review, schedule
 from .answers.bank import AnswerBank
 from .answers.resolver import is_work_auth
 from .answers.writer import make_writer
@@ -445,7 +445,8 @@ def apply_job(
             )
         model = make_llm(profile, store, "answers")
         codes = _codes(profile) if profile.settings.submit else None
-        packet = _apply_one(store, profile, model, job, retry=retry, watched=True, codes=codes)
+        with _one_at_a_time():
+            packet = _apply_one(store, profile, model, job, retry=retry, watched=True, codes=codes)
         job = store.get(job_id)
     except (ProfileError, LLMError, FetchError, PostingClosed, Unsupported) as e:
         typer.echo(str(e), err=True)
@@ -464,12 +465,65 @@ def run(
         Path | None,
         typer.Option(help="Parse a local SimplifyJobs README instead of fetching sources."),
     ] = None,
+    notify: Annotated[
+        bool, typer.Option(help="Mark the log and show a notification (the daily schedule).")
+    ] = False,
 ) -> None:
     """One unattended pass: collect, screen, fit-check, then apply to the best Greenhouse jobs.
 
     A source or job that fails is reported and the run goes on. Submits follow `aja apply`:
     live mode, the daily cap and the gate (D1) decide; everything else becomes a draft.
     """
+    if not notify:
+        _run(limit, file)
+        return
+    typer.echo(schedule.run_header())
+    try:
+        summary = _run(limit, file, SCHEDULED_LOCK_WAIT_S)
+    except typer.Exit:
+        schedule.notify("The daily run stopped early. Run `aja last` to see why.")
+        raise
+    except Exception as e:
+        typer.echo(f"The run crashed: {e!r}", err=True)
+        schedule.notify("The daily run crashed. Run `aja last` to see why.")
+        raise typer.Exit(1) from e
+    schedule.notify(summary)
+
+
+# A scheduled run that finds `aja apply` going (say, a 5-minute hand-over) waits for it.
+SCHEDULED_LOCK_WAIT_S = 30 * 60
+
+
+@contextmanager
+def _one_at_a_time(wait_s: float = 0) -> Iterator[None]:
+    """Only one `aja run` or `aja apply` at a time: two could submit the same job twice."""
+    import fcntl
+    import time
+
+    paths.home().mkdir(parents=True, exist_ok=True)
+    deadline = time.monotonic() + wait_s
+    with open(paths.home() / "apply.lock", "w") as lock:
+        while True:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    typer.echo(
+                        "Another `aja run` or `aja apply` is still going; try again after it.",
+                        err=True,
+                    )
+                    raise typer.Exit(1) from None
+                time.sleep(min(5.0, max(0.1, deadline - time.monotonic())))
+        yield
+
+
+def _run(limit: int, file: Path | None, wait_s: float = 0) -> str:
+    with _one_at_a_time(wait_s):
+        return _run_locked(limit, file)
+
+
+def _run_locked(limit: int, file: Path | None) -> str:
     since = _today_start()
     try:
         profile = load_profile(paths.profile_path())
@@ -509,23 +563,70 @@ def run(
             done = store.get(job.id)
             outcomes[done.status.value] += 1
             typer.echo(f"#{job.id} {done.company}: {done.role} → {done.status} ({done.reason})")
-        _run_summary(store, profile, outcomes, since)
+        return _run_summary(store, profile, outcomes, since)
     finally:
         store.close()
 
 
-def _run_summary(store: JobStore, profile: Profile, outcomes: Counter[str], since: str) -> None:
+def _run_summary(store: JobStore, profile: Profile, outcomes: Counter[str], since: str) -> str:
+    """Print the run's results; return the one-line version for the notification."""
     mode = "live" if profile.settings.submit else "shadow mode"
-    typer.echo(
-        f"\nRun ({mode}): {outcomes[Status.APPLIED]} submitted, {outcomes[Status.STAGED]} drafts, "
+    line = (
+        f"Run ({mode}): {outcomes[Status.APPLIED]} submitted, {outcomes[Status.STAGED]} drafts, "
         f"{outcomes[Status.FAILED]} failed, {outcomes[Status.SKIPPED]} closed, "
         f"{outcomes['errors'] + outcomes['waiting']} retried next run"
     )
+    typer.echo(f"\n{line}")
     new = store.new_since(since)
     supply = ", ".join(f"{ats} {n}" for ats, n in sorted(new.items(), key=lambda kv: -kv[1]))
     typer.echo(f"New today that passed screening: {supply or 'none'}")
     waiting = len(store.apply_queue(ATS.GREENHOUSE))
     typer.echo(f"Greenhouse jobs still queued: {waiting}. Drafts: `aja review`")
+    return line
+
+
+@app.command("schedule")
+def schedule_cmd(
+    at: Annotated[
+        str | None, typer.Option(help="Time of day for the daily run, e.g. 21:30 or 9:30pm.")
+    ] = None,
+    off: Annotated[bool, typer.Option("--off", help="Stop the daily run.")] = False,
+) -> None:
+    """Run `aja run` every day on this Mac (launchd), with a notification when it finishes."""
+    if off:
+        stopped = schedule.uninstall()
+        typer.echo("Daily run stopped." if stopped else "No daily run was scheduled.")
+        return
+    if at is None:
+        when = schedule.installed_time()
+        typer.echo(
+            f"Daily run at {when[0]:02d}:{when[1]:02d}. Log: `aja last`"
+            if when
+            else "No daily run. Start one with `aja schedule --at 21:30`."
+        )
+        return
+    try:
+        hour, minute = schedule.parse_time(at)
+    except ValueError as e:
+        typer.echo(str(e), err=True)
+        raise typer.Exit(1) from e
+    try:
+        schedule.install(hour, minute)
+    except (OSError, RuntimeError) as e:
+        typer.echo(f"Could not schedule the run: {e}", err=True)
+        raise typer.Exit(1) from e
+    typer.echo(
+        f"Daily run at {hour:02d}:{minute:02d}: `aja run --limit {schedule.RUN_LIMIT}`, then a "
+        "notification. The Mac must be on and you logged in; a run missed while it slept starts "
+        "when it wakes. See the last run with `aja last`; stop with `aja schedule --off`."
+    )
+
+
+@app.command("last")
+def last() -> None:
+    """Show the output of the latest scheduled run."""
+    text = schedule.last_run()
+    typer.echo(text or f"No scheduled run yet (log: {schedule.log_path()}).")
 
 
 def _review_list(store: JobStore) -> None:

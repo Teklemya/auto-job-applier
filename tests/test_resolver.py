@@ -1012,3 +1012,94 @@ def test_a_lone_consent_box_follows_demographic_consent(profile, bank):
     profile.preferences.demographic_consent = False
     [a] = run([q], profile, bank, model=FakeLLM(llm_says((0, "I consent", False))))
     assert not a.confident
+
+
+def test_non_compete_comes_from_the_profile(profile, bank):
+    q = F(
+        "Are you currently subject to any non-compete or non-solicitation agreement that would "
+        "impact your ability to work at Acme or prevent you from accepting a job offer from Acme?",
+        "select",
+        options=YES_NO,
+    )
+    profile.experience.non_compete = False
+    [a] = run([q], profile, bank)
+    assert (a.value, a.source) == ("No", "profile")
+    profile.experience.non_compete = None
+    [a] = run([q], profile, bank, model=FakeLLM(llm_says((0, "No", False))))
+    assert not a.confident
+
+
+def test_transgender_is_its_own_question_not_gender(profile, bank):
+    profile.demographics.gender = "Male"
+    profile.demographics.transgender = "No"
+    q = F("Do you identify as transgender?", "select", options=["Yes", "No", "Decline"])
+    [a] = run([q], profile, bank)
+    assert a.value == "No"
+
+
+def test_ethnicities_plural_and_ranked_veteran_spellings(profile, bank):
+    profile.demographics.race_ethnicity = "Black or African American"
+    profile.demographics.veteran_status = ["I am not a protected veteran", "No military service"]
+    ethnicity = F(
+        "Please select up to 2 ethnicities that you most closely identify with.",
+        "select",
+        options=["American Indian or Alaska Native", "Black or African American", "White"],
+    )
+    veteran = F(
+        "Protected Veteran Status",
+        "select",
+        options=["I am a veteran", "No military service", "I don't wish to answer"],
+    )
+    a, b = run([ethnicity, veteran], profile, bank)
+    assert (a.value, b.value) == ("Black or African American", "No military service")
+
+
+@pytest.mark.parametrize(
+    "label",
+    ["What is your current or previous job title?", "Most recent title"],
+)
+def test_current_or_previous_title_comes_from_the_profile(profile, bank, label):
+    [a] = run([F(label)], profile, bank)
+    assert (a.value, a.source) == ("Software Engineer", "profile")
+
+
+def test_worked_here_with_an_apply_internally_note_is_still_answered(profile, bank):
+    q = F(
+        "Have you previously been employed by Acme or an Acme subsidiary (TrackAbout, AFT, "
+        "etc.)? (If you are a current employee, please apply via the internal job board.)"
+    )
+    [a] = run([q], profile, bank)
+    assert (a.value, a.source) == ("No", "profile")
+
+
+def test_previously_applied_is_still_not_an_employment_question(profile, bank):
+    q = F("Have you previously applied to work at Acme?")
+    [a] = run([q], profile, bank, model=FakeLLM(llm_says((0, "No", True))))
+    assert a.source == "llm"
+
+
+def test_previous_job_title_alone_is_not_the_current_one(profile, bank):
+    [a] = run([F("Previous job title")], profile, bank, model=FakeLLM(llm_says((0, "x", False))))
+    assert a.source != "profile"
+
+
+def test_non_compete_with_current_employer_is_yes_or_no(profile, bank):
+    profile.experience.non_compete = False
+    [a] = run(
+        [
+            F(
+                "Are you subject to a non-compete with your current employer?",
+                "select",
+                options=["Yes", "No"],
+            )
+        ],
+        profile,
+        bank,
+    )
+    assert a.value == "No"
+
+
+def test_a_note_alone_does_not_make_a_worked_here_question(profile, bank):
+    q = F("Willing to relocate to work at Acme? (Former employees: apply internally.)")
+    [a] = run([q], profile, bank, model=FakeLLM(llm_says((0, "Yes", True))))
+    assert a.source != "profile"

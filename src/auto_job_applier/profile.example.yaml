@@ -54,8 +54,10 @@ experience:
   years_experience: 1
   past_employers: []  # e.g. [Acme Corp]; "Have you worked at X before?" is No for anyone else
   family_employed_at: []  # "Do any relatives work at X?" is No unless X is listed here
+  non_compete: false  # bound by a non-compete or non-solicitation agreement?
 
-# Voluntary self-identification. Each value is answered verbatim when a form asks.
+# Voluntary self-identification. Each value is answered verbatim when a form asks; a list is
+# tried in order, e.g. veteran_status: ["I am not a protected veteran", "No military service"].
 demographics:
   gender: Decline to self-identify
   race_ethnicity: Decline to self-identify
@@ -63,6 +65,7 @@ demographics:
   veteran_status: Decline to self-identify
   disability_status: Decline to self-identify
   sexual_orientation: Decline to self-identify  # or ["Heterosexual", "Straight"]
+  transgender: Decline to self-identify  # or "No"
   pronouns: null  # e.g. He/Him
 
 preferences:

@@ -128,18 +128,23 @@ class Experience(_Strict):
     past_employers: list[str] = []
     # Companies where immediate family works, for "are any of your relatives employees of X?".
     family_employed_at: list[str] = []
+    # "Are you subject to a non-compete or non-solicitation agreement?" Left empty, it goes
+    # to review.
+    non_compete: bool | None = None
 
 
 class Demographics(_Strict):
     """Voluntary self-identification (EEO) answers."""
 
-    gender: str = DECLINE
-    race_ethnicity: str = DECLINE
-    hispanic_latino: str = DECLINE
-    veteran_status: str = DECLINE
-    disability_status: str = DECLINE
-    # One answer, or spellings tried in order: ["Heterosexual", "Straight"].
+    # Each takes one answer, or spellings tried in order until the form offers one:
+    # veteran_status: ["I am not a protected veteran", "No military service"].
+    gender: str | list[str] = DECLINE
+    race_ethnicity: str | list[str] = DECLINE
+    hispanic_latino: str | list[str] = DECLINE
+    veteran_status: str | list[str] = DECLINE
+    disability_status: str | list[str] = DECLINE
     sexual_orientation: str | list[str] = DECLINE
+    transgender: str | list[str] = DECLINE  # "Do you identify as transgender?"
     pronouns: str | None = None  # e.g. "He/Him"; left empty, a required question goes to review
 
 
