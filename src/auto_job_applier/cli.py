@@ -1,6 +1,5 @@
 """`aja` command-line entry point."""
 
-import subprocess
 from collections import Counter
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
@@ -480,7 +479,7 @@ def run(
         return
     typer.echo(schedule.run_header())
     try:
-        summary = _run(limit, file)
+        summary = _run(limit, file, SCHEDULED_LOCK_WAIT_S)
     except typer.Exit:
         schedule.notify("The daily run stopped early. Run `aja last` to see why.")
         raise
@@ -491,25 +490,36 @@ def run(
     schedule.notify(summary)
 
 
+# A scheduled run that finds `aja apply` going (say, a 5-minute hand-over) waits for it.
+SCHEDULED_LOCK_WAIT_S = 30 * 60
+
+
 @contextmanager
-def _one_at_a_time() -> Iterator[None]:
+def _one_at_a_time(wait_s: float = 0) -> Iterator[None]:
     """Only one `aja run` or `aja apply` at a time: two could submit the same job twice."""
     import fcntl
+    import time
 
     paths.home().mkdir(parents=True, exist_ok=True)
+    deadline = time.monotonic() + wait_s
     with open(paths.home() / "apply.lock", "w") as lock:
-        try:
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            typer.echo(
-                "Another `aja run` or `aja apply` is still going; try again after it.", err=True
-            )
-            raise typer.Exit(1) from None
+        while True:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    typer.echo(
+                        "Another `aja run` or `aja apply` is still going; try again after it.",
+                        err=True,
+                    )
+                    raise typer.Exit(1) from None
+                time.sleep(min(5.0, max(0.1, deadline - time.monotonic())))
         yield
 
 
-def _run(limit: int, file: Path | None) -> str:
-    with _one_at_a_time():
+def _run(limit: int, file: Path | None, wait_s: float = 0) -> str:
+    with _one_at_a_time(wait_s):
         return _run_locked(limit, file)
 
 
@@ -602,7 +612,7 @@ def schedule_cmd(
         raise typer.Exit(1) from e
     try:
         schedule.install(hour, minute)
-    except (OSError, subprocess.CalledProcessError) as e:
+    except (OSError, RuntimeError) as e:
         typer.echo(f"Could not schedule the run: {e}", err=True)
         raise typer.Exit(1) from e
     typer.echo(

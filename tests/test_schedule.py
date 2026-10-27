@@ -1,4 +1,5 @@
 import plistlib
+import subprocess
 from datetime import datetime
 
 import pytest
@@ -15,7 +16,12 @@ def mac(tmp_path, monkeypatch, aja_home):
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.setattr(schedule.shutil, "which", lambda name: "/Users/me/aja/.venv/bin/aja")
     calls = []
-    monkeypatch.setattr(schedule.subprocess, "run", lambda args, **kw: calls.append(args))
+
+    def run(args, **kw):
+        calls.append(args)
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setattr(schedule.subprocess, "run", run)
     return calls
 
 
@@ -71,7 +77,9 @@ def test_last_shows_only_the_newest_run(aja_home):
 
 def test_a_scheduled_run_notifies_its_summary(monkeypatch):
     shown = []
-    monkeypatch.setattr(cli, "_run", lambda limit, file: "Run (live): 3 submitted, 4 drafts")
+    monkeypatch.setattr(
+        cli, "_run", lambda limit, file, wait_s=0: "Run (live): 3 submitted, 4 drafts"
+    )
     monkeypatch.setattr(schedule, "notify", shown.append)
     result = runner.invoke(cli.app, ["run", "--notify"])
     assert result.exit_code == 0, result.output
@@ -82,7 +90,7 @@ def test_a_scheduled_run_notifies_its_summary(monkeypatch):
 def test_a_scheduled_run_that_stops_still_notifies(monkeypatch):
     shown = []
 
-    def broken(limit, file):
+    def broken(limit, file, wait_s=0):
         raise RuntimeError("database is locked")
 
     monkeypatch.setattr(cli, "_run", broken)
@@ -108,3 +116,41 @@ def test_a_second_run_waits_for_the_first(aja_home, monkeypatch):
         result = runner.invoke(cli.app, ["run"])
     assert result.exit_code == 1
     assert "still going" in result.output
+
+
+def test_a_job_launchd_never_loads_is_not_left_behind(mac, monkeypatch):
+    tries = []
+
+    def busy(args, **kw):
+        tries.append(args)
+        return subprocess.CompletedProcess(args, 5, "", "Bootstrap failed: 5")
+
+    with pytest.raises(RuntimeError, match="Bootstrap failed"):
+        schedule.install(21, 30, run=busy, wait=lambda s: None)
+    assert len(tries) == 5
+    assert not schedule.plist_path().exists()
+
+
+def test_reloading_waits_until_launchd_has_let_go(mac):
+    answers = iter([5, 5, 0])
+
+    def slow(args, **kw):
+        return subprocess.CompletedProcess(args, next(answers), "", "")
+
+    assert schedule.install(21, 30, run=slow, wait=lambda s: None).exists()
+
+
+def test_a_scheduled_run_waits_out_an_apply_then_gives_up(aja_home, monkeypatch):
+    import fcntl
+
+    shown = []
+    monkeypatch.setattr(schedule, "notify", shown.append)
+    monkeypatch.setattr(cli, "SCHEDULED_LOCK_WAIT_S", 0.3)
+    aja_home.mkdir(parents=True)
+    with open(aja_home / "apply.lock", "w") as held:
+        fcntl.flock(held, fcntl.LOCK_EX)
+        monkeypatch.setattr(cli, "_run_locked", lambda limit, file: pytest.fail("ran twice"))
+        result = runner.invoke(cli.app, ["run", "--notify"])
+    assert result.exit_code == 1
+    assert "still going" in result.output
+    assert "stopped early" in shown[0]

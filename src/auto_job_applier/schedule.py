@@ -12,6 +12,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
@@ -67,17 +68,27 @@ def job_plist(hour: int, minute: int, aja: str, log: Path) -> bytes:
     return plistlib.dumps(job)
 
 
-def install(hour: int, minute: int, run: Runner | None = None) -> Path:
-    """Write the job and (re)load it; an earlier schedule is replaced."""
-    run = run or subprocess.run
+def install(
+    hour: int, minute: int, run: Runner | None = None, wait: Callable[[float], None] | None = None
+) -> Path:
+    """Write the job and (re)load it; an earlier schedule is replaced. launchd unloads the old
+    job in the background, so loading the new one is retried for a few seconds; if it never
+    loads, the job file is removed so `aja schedule` doesn't claim a run that won't happen."""
+    run, wait = run or subprocess.run, wait or time.sleep
     log = log_path()
     log.parent.mkdir(parents=True, exist_ok=True)
     target = plist_path()
     target.parent.mkdir(parents=True, exist_ok=True)
     uninstall(run)
     target.write_bytes(job_plist(hour, minute, aja_command(), log))
-    run(["launchctl", "bootstrap", f"gui/{os.getuid()}", str(target)], check=True)
-    return target
+    load = ["launchctl", "bootstrap", f"gui/{os.getuid()}", str(target)]
+    for attempt in range(5):
+        done = run(load, check=False, capture_output=True, text=True)
+        if done.returncode == 0:
+            return target
+        wait(1.0 + attempt)
+    target.unlink()
+    raise RuntimeError(f"launchctl could not load the job: {(done.stderr or '').strip()}")
 
 
 def uninstall(run: Runner | None = None) -> bool:

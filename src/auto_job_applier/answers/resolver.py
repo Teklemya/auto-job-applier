@@ -121,13 +121,16 @@ def _profile_value(label: str, p: Profile) -> Value:
         (r"graduation year|year of graduation", lambda: edu and [edu.graduation[:4], "Other"]),
         (r"graduat", lambda: edu and edu.graduation),
         (r"\bgpa\b", lambda: edu and edu.gpa),
+        # Before "current employer": "a non-compete with your current employer?" is yes/no.
+        (r"non ?compete|non ?solicit|restrictive covenant", lambda: e.non_compete),
         # Greenhouse labels its employment section "Employment: Company name" (T7).
         (
             r"(current|most recent) (company|employer)|^employment company",
             lambda: e.current_company,
         ),
         (
-            r"(current|most recent|previous)( or (current|most recent|previous))? (job )?title"
+            # "current or previous job title" (not a lone "previous job title": another job)
+            r"(current|most recent)( or (most recent|previous))? (job )?title"
             r"|^employment (job )?title",
             lambda: e.current_title,
         ),
@@ -139,7 +142,6 @@ def _profile_value(label: str, p: Profile) -> Value:
         ),
         (r"sexual orientation", lambda: d.sexual_orientation),
         (r"pronoun", lambda: d.pronouns),  # before "gender": "your gender pronouns"
-        (r"non ?compete|non ?solicit|restrictive covenant", lambda: e.non_compete),
         (r"transgender", lambda: d.transgender),  # before "gender"
         (r"hispanic|latin", lambda: d.hispanic_latino),
         (r"\brace\b|ethnicit", lambda: d.race_ethnicity),  # "ethnicity", "ethnicities"
@@ -189,7 +191,8 @@ def _tie_to_company(label: str, job: Job, p: Profile, asked: str = "") -> bool |
     e, here = p.experience, normalize(job.company)
     if _FAMILY_THERE.search(label):
         return here in [normalize(c) for c in e.family_employed_at]
-    if _WORKED_HERE.search(label) and not _NOT_EMPLOYMENT.search(asked or label):
+    asked = asked or label
+    if _WORKED_HERE.search(asked) and not _NOT_EMPLOYMENT.search(asked):
         return here in [normalize(c) for c in [*e.past_employers, e.current_company or ""] if c]
     return None
 

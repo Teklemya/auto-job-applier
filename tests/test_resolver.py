@@ -1056,7 +1056,7 @@ def test_ethnicities_plural_and_ranked_veteran_spellings(profile, bank):
 
 @pytest.mark.parametrize(
     "label",
-    ["What is your current or previous job title?", "Previous job title", "Most recent title"],
+    ["What is your current or previous job title?", "Most recent title"],
 )
 def test_current_or_previous_title_comes_from_the_profile(profile, bank, label):
     [a] = run([F(label)], profile, bank)
@@ -1076,3 +1076,30 @@ def test_previously_applied_is_still_not_an_employment_question(profile, bank):
     q = F("Have you previously applied to work at Acme?")
     [a] = run([q], profile, bank, model=FakeLLM(llm_says((0, "No", True))))
     assert a.source == "llm"
+
+
+def test_previous_job_title_alone_is_not_the_current_one(profile, bank):
+    [a] = run([F("Previous job title")], profile, bank, model=FakeLLM(llm_says((0, "x", False))))
+    assert a.source != "profile"
+
+
+def test_non_compete_with_current_employer_is_yes_or_no(profile, bank):
+    profile.experience.non_compete = False
+    [a] = run(
+        [
+            F(
+                "Are you subject to a non-compete with your current employer?",
+                "select",
+                options=["Yes", "No"],
+            )
+        ],
+        profile,
+        bank,
+    )
+    assert a.value == "No"
+
+
+def test_a_note_alone_does_not_make_a_worked_here_question(profile, bank):
+    q = F("Willing to relocate to work at Acme? (Former employees: apply internally.)")
+    [a] = run([q], profile, bank, model=FakeLLM(llm_says((0, "Yes", True))))
+    assert a.source != "profile"
