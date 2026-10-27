@@ -9,6 +9,7 @@ from typer.testing import CliRunner
 from auto_job_applier import apply, cli, fit
 from auto_job_applier.answers import resolver
 from auto_job_applier.answers.bank import AnswerBank
+from auto_job_applier.answers.resolver import may_tick
 from auto_job_applier.engines import greenhouse
 from auto_job_applier.engines.base import PageField, SubmitResult
 from auto_job_applier.models import ATS, FormField, Job, Status
@@ -396,10 +397,12 @@ def live(home, data, cap=3):
     (home / "profile.yaml").write_text(yaml.safe_dump(data))
 
 
-def ready_greenhouse(monkeypatch, sessions):
+def ready_greenhouse(monkeypatch, sessions, session_type=None, empty_on_page=()):
     @contextmanager
     def fake_session(job):
-        session = FakeSession(first_name_only(), submits=SubmitResult(confirmed=True))
+        kind = session_type or FakeSession
+        session = kind(first_name_only(), submits=SubmitResult(confirmed=True))
+        session.empty_on_page = list(empty_on_page)
         sessions.append(session)
         yield session
 
@@ -682,10 +685,53 @@ def test_ticking_can_be_turned_off(profile, store, tmp_path):
         ("I acknowledge that I am at least 18 years of age", False),
         ("I acknowledge I will require visa sponsorship", False),
         ("I am interested in other roles", False),
+        ("I understand this role requires working on-site 5 days a week", False),
+        ("I acknowledge I am willing to relocate to Austin, TX", False),
+        ("I consent to a background check and drug screening", False),
     ],
 )
-def test_which_boxes_count_as_acknowledgements(label, ticks):
-    assert apply.acknowledges_only(label) is ticks
+def test_which_boxes_count_as_acknowledgements(profile, label, ticks):
+    profile.preferences.demographic_consent = True
+    assert may_tick(label, profile) is ticks
+
+
+def test_demographic_consent_follows_its_own_setting(profile):
+    label = "I consent to Twilio processing my responses to the demographic surveys"
+    profile.preferences.demographic_consent = False
+    assert not may_tick(label, profile)
+    profile.preferences.demographic_consent = None
+    assert not may_tick(label, profile)
+
+
+def test_a_closed_posting_is_never_handed_over(profile, store, tmp_path):
+    session = FakeSession([])
+    job = staged(profile, store, tmp_path, session, submit=True, hand_over_ms=600_000)
+    assert session.handed_over is None
+    assert job.status is Status.STAGED and not job.reason.startswith(apply.CLICKED)
+
+
+def test_a_hand_over_cut_short_is_never_submitted_again(
+    home_with_profile, example_profile_data, monkeypatch
+):
+    live(home_with_profile, example_profile_data, cap=3)
+    job_id = queue(home_with_profile, LYFT)
+
+    class Interrupted(FakeSession):
+        def wait_for_owner(self, wait_ms):
+            raise KeyboardInterrupt
+
+    sessions = []
+    ready_greenhouse(monkeypatch, sessions, session_type=Interrupted, empty_on_page=[
+        ("cit", CITIZEN, "checkbox")
+    ])  # fmt: skip
+    runner.invoke(cli.app, ["apply", str(job_id)])
+    s = JobStore(home_with_profile / "jobs.db")
+    assert s.get(job_id).reason == apply.HANDED_OVER
+    s.close()
+    sessions.clear()
+    ready_greenhouse(monkeypatch, sessions)
+    runner.invoke(cli.app, ["apply", str(job_id)])
+    assert sessions[0].submitted == 0
 
 
 def test_a_blocked_form_is_handed_to_the_owner_who_submits_it(profile, store, tmp_path):

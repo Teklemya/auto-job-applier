@@ -190,26 +190,50 @@ _ACKNOWLEDGES = re.compile(
     r"|privacy (policy|notice)|terms (and|&) conditions|true (and|,) (complete|accurate)",
     re.I,
 )
+# Facts about the owner, and commitments the owner makes (relocating, on-site days, travel,
+# checks): never ticked as a mere acknowledgement. Demographic consent has its own setting.
 _STATES_A_FACT = re.compile(
     r"citizen|resident|veteran|disab|authori[sz]|sponsor|visa|clearance|criminal|convict"
     r"|felon|\bage\b|\b1[89]\b|years (of age|old)|employed|relative|gender|race|ethnic"
-    r"|orientation|licen[sc]|degree|graduat",
+    r"|orientation|licen[sc]|degree|graduat"
+    r"|relocat|on ?site|in ?office|hybrid|office|travel|commut|background|drug|screening"
+    r"|shift|weekend|overtime|hours|days a week|full ?time|start|availab|willing"
+    r"|demographic|self ?identif|survey",
     re.I,
 )
 
 
 def acknowledges_only(label: str) -> bool:
-    return bool(_ACKNOWLEDGES.search(label)) and not _STATES_A_FACT.search(label)
+    text = normalize(label)
+    return bool(_ACKNOWLEDGES.search(text)) and not _STATES_A_FACT.search(text)
+
+
+def may_tick(label: str, p: Profile) -> bool:
+    """A required box the owner lets the tool tick: demographic consent by its own setting,
+    otherwise a plain acknowledgement when `tick_acknowledgements` is on."""
+    pref = p.preferences
+    if _CONSENT.search(normalize(label)):
+        return pref.demographic_consent is True
+    return pref.tick_acknowledgements and acknowledges_only(label)
 
 
 _ORDINALS = ["first", "second", "third"]
 _ORDINAL_CHOICE = re.compile(r"\b(first|second|third) (choice|preference) of (interest|area|team)")
-_START_WINDOW = re.compile(r"(able|available|can you|could you) (to )?start|start (between|by|in)")
-_IN_OFFICE = re.compile(r"hybrid|in.office|on.?site|office attendance|days a week in")
+_START_WINDOW = re.compile(r"(able|available|can you|could you) (to )?start|start (between|by)")
+_IN_OFFICE = re.compile(r"hybrid|\bin ?office\b|\bon ?site\b|office attendance|days a week in")
 _CONSENT = re.compile(r"consent.*(demographic|self identif|survey)|(demographic|survey).*consent")
 _MONTH_YEAR = re.compile(
     r"\b(?:(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.? )?(20\d\d)\b"
 )
+
+
+def _starts_by(earliest: str | None, end: str) -> bool | None:
+    """Can the owner start by `end` ("YYYY-MM")? A bare year decides only across years."""
+    if earliest is None:
+        return None
+    if len(earliest) == 4:
+        return True if earliest < end[:4] else False if earliest > end[:4] else None
+    return earliest <= end
 
 
 def _window_end(label: str) -> str | None:
@@ -240,14 +264,14 @@ def _preference_value(label: str, field: FormField, p: Profile) -> Value | objec
     yes_no = field.kind in ("select", "radio", "checkbox", "checkboxes")
     # "By clicking Acknowledge, you acknowledge ..." with one box labelled "Acknowledge"
     lone_box = field.kind == "checkboxes" and len(field.options) == 1
-    if lone_box and pref.tick_acknowledgements and acknowledges_only(f"{label} {field.options[0]}"):
-        return field.options[0]
+    if lone_box and (_CONSENT.search(label) or _ACKNOWLEDGES.search(label)):
+        return field.options[0] if may_tick(f"{label} {field.options[0]}", p) else None
     if yes_no and (end := _window_end(label)) and _START_WINDOW.search(label):
-        return None if pref.earliest_start is None else pref.earliest_start <= end
+        return _starts_by(pref.earliest_start, end)
     if re.search(r"start date|when can you start|available to start|earliest start", label):
         return pref.start_date
     if field.kind == "checkbox" and _CONSENT.search(label):
-        return pref.demographic_consent
+        return pref.demographic_consent is True
     if yes_no and _IN_OFFICE.search(label) and not _OPEN_ENDED.search(label):
         return pref.in_office_ok
     if (n := _ORDINAL_CHOICE.search(label)) and field.options and pref.engineering_focus:
@@ -315,12 +339,26 @@ def _work_auth_value(label: str, p: Profile) -> Value:
     if re.search(r"visa status|immigration status|current visa", label):
         return wa.visa_status
     if "citizen" in label and _SANCTIONED.search(label):
-        # "Are you a citizen or resident of Cuba, Iran, North Korea, Syria or Crimea?"
-        if not wa.citizenships:
-            return None
-        mine = [normalize(c) for c in [*wa.citizenships, p.address.country]]
-        return any(re.search(rf"\b{re.escape(c)}\b", label) for c in mine if c)
+        return _tied_to_listed_country(label, wa.citizenships, p.address.country)
     return None
+
+
+def _tied_to_listed_country(label: str, citizenships: list[str], home: str) -> bool | None:
+    """ "Are you a citizen or resident of Cuba, Iran, North Korea, Syria or Crimea?" Yes when
+    a citizenship or the address country is named; the U.S. is the one doing the sanctioning,
+    so "U.S. sanctions" never counts. A country named only as the home of a listed region
+    ("Crimea region of Ukraine") can't be decided from the profile."""
+    if not citizenships:
+        return None
+    mine = {normalize(c) for c in [*citizenships, home] if c} - {
+        "united states", "united states of america", "us", "usa", "u s", "u s a"
+    }  # fmt: skip
+    for country in mine:
+        if re.search(rf"\b(region|regions) of {re.escape(country)}\b", label):
+            return None
+        if re.search(rf"\b{re.escape(country)}\b", label):
+            return True
+    return False
 
 
 def _negated(text: str) -> bool:

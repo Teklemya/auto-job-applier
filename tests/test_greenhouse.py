@@ -327,3 +327,26 @@ def test_boxes_are_ticked_one_at_a_time_in_the_browser():
     assert before == [HEARD, ACK]
     assert checked == [f"{HEARD}_2"]
     assert rejected == [ACK]
+
+
+QUESTION_ABOVE_BOX = """
+<form id="application-form"><div class="field-wrapper">
+  <div class="label">I certify that I am a U.S. citizen.*</div>
+  <div class="checkbox"><input type="checkbox" id="cert" required><label for="cert">I agree</label>
+  </div></div></form>
+"""
+
+
+def test_a_box_is_described_by_the_question_above_it():
+    sync_api = pytest.importorskip("playwright.sync_api")
+    try:
+        with sync_api.sync_playwright() as pw:
+            browser = pw.chromium.launch()
+            page = browser.new_page()
+            page.set_content(QUESTION_ABOVE_BOX)
+            [(_, label, kind)] = greenhouse.GreenhouseSession(page, None).missing_required()
+            browser.close()
+    except sync_api.Error as e:  # no browser installed here
+        pytest.skip(str(e))
+    assert kind == "checkbox"
+    assert "U.S. citizen" in label and "I agree" in label

@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Protocol
 
 from .answers.bank import AnswerBank
-from .answers.resolver import Writer, acknowledges_only, gate, resolve
+from .answers.resolver import Writer, gate, may_tick, resolve
 from .engines.base import REJECTED, Action, Packet, PageField, SubmitResult, fill_plan
 from .llm import LLM
 from .models import Job, ResolvedAnswer, Status
@@ -28,6 +28,9 @@ AUTO_SUBMITTED = CLICKED + "confirmation page seen"
 UNCONFIRMED = CLICKED + "no confirmation page; check your email before applying again"
 EMPTY_ON_PAGE = "required but empty on the page: "
 BY_OWNER = CLICKED + "submitted by the owner, confirmation page seen"
+HANDED_OVER = (
+    CLICKED + "handed to the owner; if you submitted it, it is sent, otherwise apply with --retry"
+)
 OWNER_UNCLEAR = CLICKED + "the owner left the form without a confirmation page; check your email"
 
 MAX_PASSES = 3  # fill rounds while answers keep revealing new fields
@@ -157,7 +160,7 @@ def stage(
     shots_dir.mkdir(parents=True, exist_ok=True)
     session.screenshot(shots_dir / f"{job.id}-{datetime.now():%Y%m%d-%H%M%S}.png")
     store.save_packet(job.id, packet)
-    if packet.blockers and submit and hand_over_ms:
+    if packet.blockers and packet.fields and submit and hand_over_ms:  # never a closed posting
         return _hand_over(job, session, packet, store, flagged, empty, hand_over_ms, on_hand_over)
     if packet.blockers or not submit:
         store.set_status(job.id, Status.STAGED, _draft_reason(packet, held))
@@ -192,8 +195,7 @@ def _empty_after_acknowledging(session: FormSession, profile: Profile) -> list[t
         return [("", "could not check the page for empty fields")]
     left = []
     for dom_id, label, kind in empty:
-        ack = kind == "checkbox" and acknowledges_only(label)
-        if not (ack and profile.preferences.tick_acknowledgements and session.tick(dom_id)):
+        if not (kind == "checkbox" and may_tick(label, profile) and session.tick(dom_id)):
             left.append((dom_id, label))
     return left
 
@@ -211,7 +213,9 @@ def _hand_over(
     """The owner finishes the outlined fields and clicks Submit; the page is watched for the
     confirmation, as after the tool's own click."""
     assert job.id is not None
-    store.set_status(job.id, Status.STAGED, _draft_reason(packet))  # in case the wait dies
+    # Until the page says otherwise, the owner may have clicked Submit: if the wait is cut short
+    # (Ctrl-C, a closed window), the job is never submitted again on its own.
+    store.set_status(job.id, Status.STAGED, HANDED_OVER)
     with contextlib.suppress(Exception):
         session.highlight(sorted(flagged | {dom_id for dom_id, _ in empty if dom_id}))
     on_hand_over(packet.blockers)
@@ -220,6 +224,8 @@ def _hand_over(
         store.set_status(job.id, Status.APPLIED, BY_OWNER)
     elif result.problems:
         store.set_status(job.id, Status.FAILED, OWNER_UNCLEAR)
+    else:  # the form is still there, unsent
+        store.set_status(job.id, Status.STAGED, _draft_reason(packet))
     return packet
 
 

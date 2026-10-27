@@ -957,3 +957,58 @@ def test_a_graduation_year_the_form_does_not_list_is_other(profile, bank):
     assert a.value == "2026"
     [a] = run([F("Graduation year")], profile, bank)
     assert a.value == "2026"
+
+
+@pytest.mark.parametrize(
+    "question, citizenships, expected",
+    [
+        (SANCTIONS, ["Ethiopia"], "No"),
+        (
+            "Are you a citizen or resident of Cuba, Iran, North Korea, Syria, or any country "
+            "subject to comprehensive United States sanctions?",
+            ["Ethiopia"],
+            "No",
+        ),
+        (SANCTIONS, ["Ukraine"], None),  # a Crimea resident? the profile can't say
+        (SANCTIONS, ["Syria"], "Yes"),
+    ],
+)
+def test_sanctions_question_edge_cases(profile, bank, question, citizenships, expected):
+    profile.work_authorization.citizenships = citizenships
+    [a] = run([F(question, "select", options=YES_NO)], profile, bank)
+    assert (a.value if a.confident else None) == expected
+
+
+def test_site_reliability_is_not_an_on_site_question(profile, bank):
+    profile.preferences.in_office_ok = True
+    q = F("Do you have experience in site reliability engineering?", "select", options=YES_NO)
+    [a] = run([q], profile, bank, model=FakeLLM(llm_says((0, "Yes", False))))
+    assert a.source != "preferences"
+
+
+def test_past_tense_start_is_not_a_start_window(profile, bank):
+    profile.preferences.earliest_start = "2027-01"
+    q = F("Did you start in 2020 at your current employer?", "select", options=YES_NO)
+    [a] = run([q], profile, bank, model=FakeLLM(llm_says((0, "Yes", False))))
+    assert a.source != "preferences"
+
+
+@pytest.mark.parametrize(
+    "earliest, expected", [("2026", "Yes"), ("2027", None), ("2028", "No"), ("2027-01", "Yes")]
+)
+def test_a_bare_year_earliest_start_decides_only_across_years(profile, bank, earliest, expected):
+    profile.preferences.earliest_start = earliest
+    q = F(START_WINDOW, "select", options=YES_NO)
+    [a] = run([q], profile, bank, model=FakeLLM(llm_says((0, "Yes", False))))
+    assert (a.value if a.confident else None) == expected
+
+
+def test_a_lone_consent_box_follows_demographic_consent(profile, bank):
+    q = F(
+        "By checking this box, I consent to Acme processing my demographic survey responses.",
+        "checkboxes",
+        options=["I consent"],
+    )
+    profile.preferences.demographic_consent = False
+    [a] = run([q], profile, bank, model=FakeLLM(llm_says((0, "I consent", False))))
+    assert not a.confident

@@ -247,11 +247,20 @@ SUBMIT_WAIT_MS = 30_000
 # dropdowns still showing their placeholder (the choice sits beside the input, not in it). File
 # inputs are left to the field reader, which knows about the paste-text alternative.
 _MISSING_REQUIRED_JS = """() => {
+  const tidy = t => (t || '').replace(/\\s+/g, ' ').replace(/\\*\\s*$/, '').trim();
   const label = el => {
     const byFor = el.id && document.querySelector(`label[for="${CSS.escape(el.id)}"]`);
-    const text = (byFor && byFor.innerText) || el.getAttribute('aria-label')
-      || (el.closest('label, fieldset, .checkbox, .field-wrapper') || {}).innerText || el.id;
-    return text.replace(/\\s+/g, ' ').replace(/\\*\\s*$/, '').trim().slice(0, 160);
+    let text = tidy((byFor && byFor.innerText) || el.getAttribute('aria-label')
+      || (el.closest('label, fieldset, .checkbox, .field-wrapper') || {}).innerText || el.id);
+    if (['checkbox', 'radio'].includes((el.type || '').toLowerCase())) {
+      // "I agree" means nothing alone: the question above it says what is agreed to.
+      const legend = el.closest('fieldset') && el.closest('fieldset').querySelector('legend');
+      const wrapper = el.closest('.field-wrapper');
+      const question = tidy((legend && legend.innerText) || (wrapper && wrapper.innerText));
+      if (question && !question.includes(text)) text = `${question} ${text}`;
+      else if (question) text = question;
+    }
+    return text.slice(0, 400);
   };
   const shown = el => {
     const box = el.closest('label, fieldset, .checkbox, .field-wrapper, .select') || el;
