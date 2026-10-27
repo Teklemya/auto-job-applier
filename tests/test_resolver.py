@@ -1052,3 +1052,27 @@ def test_ethnicities_plural_and_ranked_veteran_spellings(profile, bank):
     )
     a, b = run([ethnicity, veteran], profile, bank)
     assert (a.value, b.value) == ("Black or African American", "No military service")
+
+
+@pytest.mark.parametrize(
+    "label",
+    ["What is your current or previous job title?", "Previous job title", "Most recent title"],
+)
+def test_current_or_previous_title_comes_from_the_profile(profile, bank, label):
+    [a] = run([F(label)], profile, bank)
+    assert (a.value, a.source) == ("Software Engineer", "profile")
+
+
+def test_worked_here_with_an_apply_internally_note_is_still_answered(profile, bank):
+    q = F(
+        "Have you previously been employed by Acme or an Acme subsidiary (TrackAbout, AFT, "
+        "etc.)? (If you are a current employee, please apply via the internal job board.)"
+    )
+    [a] = run([q], profile, bank)
+    assert (a.value, a.source) == ("No", "profile")
+
+
+def test_previously_applied_is_still_not_an_employment_question(profile, bank):
+    q = F("Have you previously applied to work at Acme?")
+    [a] = run([q], profile, bank, model=FakeLLM(llm_says((0, "No", True))))
+    assert a.source == "llm"

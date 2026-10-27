@@ -126,7 +126,11 @@ def _profile_value(label: str, p: Profile) -> Value:
             r"(current|most recent) (company|employer)|^employment company",
             lambda: e.current_company,
         ),
-        (r"(current|most recent) (job )?title|^employment (job )?title", lambda: e.current_title),
+        (
+            r"(current|most recent|previous)( or (current|most recent|previous))? (job )?title"
+            r"|^employment (job )?title",
+            lambda: e.current_title,
+        ),
         # The employment section holds only the current job, so its "Current role" box is ticked.
         (r"^employment current role", lambda: True if e.current_company else None),
         (
@@ -171,15 +175,21 @@ def _by_polarity(options: list[str], yes: bool) -> str | None:
     return hits[0] if len(hits) == 1 else None
 
 
-def _tie_to_company(label: str, job: Job, p: Profile) -> bool | None:
+def _without_asides(label: str) -> str:
+    """ "Worked here before? (If you are a current employee, apply internally.)" → the question."""
+    return normalize(re.sub(r"\([^()]*\)", " ", label))
+
+
+def _tie_to_company(label: str, job: Job, p: Profile, asked: str = "") -> bool | None:
     """Questions about the owner's own ties to this company, answered from the profile:
-    relatives working there, or having worked there before. None = not such a question."""
+    relatives working there, or having worked there before. None = not such a question.
+    `asked` is the label without bracketed notes, which often say "apply internally"."""
     if not _names_employer(label, job):
         return None
     e, here = p.experience, normalize(job.company)
     if _FAMILY_THERE.search(label):
         return here in [normalize(c) for c in e.family_employed_at]
-    if _WORKED_HERE.search(label) and not _NOT_EMPLOYMENT.search(label):
+    if _WORKED_HERE.search(label) and not _NOT_EMPLOYMENT.search(asked or label):
         return here in [normalize(c) for c in [*e.past_employers, e.current_company or ""] if c]
     return None
 
@@ -511,7 +521,7 @@ def resolve(
                 )
             results[i] = ans
             continue
-        if (tie := _tie_to_company(label, job, profile)) is not None:
+        if (tie := _tie_to_company(label, job, profile, _without_asides(f.label))) is not None:
             ans = _answer(f, tie, "profile")
             if ans.value is None and (option := _by_polarity(f.options, tie)):
                 ans = _answer(f, option, "profile", "the option that says so")
