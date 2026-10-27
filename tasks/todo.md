@@ -50,7 +50,7 @@ Every task: `ruff check . && pytest` passes, plus its manual check.
   Greenhouse (2026-10-24): APPLIED only on a confirmation page, a rejected submit or an emailed
   security code → STAGED, no confirmation → FAILED (never re-sent). Left: one live submit after the
   owner turns shadow mode off
-- [ ] T12 Scheduling + notifications: launchd at 8am and 2pm, catch-up on wake, lock, macOS summary
+- [x] T12 Scheduling + notifications: `aja schedule --at 21:30` (one launchd job, catch-up on wake), run lock, macOS notification, `aja last`
 - [ ] T13 Salary lookup: Gemini + Search grounding range cache, $120k floor
 
 ### Checkpoint D
