@@ -336,7 +336,7 @@ def _submits_left(profile: Profile, store: JobStore) -> int:
 
 
 CODE_WAIT_MS = 5 * 60_000  # time to type an emailed security code at `aja apply`
-HAND_OVER_MS = 10 * 60_000  # time to finish a blocked form by hand at `aja apply`
+HAND_OVER_MS = 5 * 60_000  # time to finish a blocked form by hand at `aja apply`
 
 
 def _codes(profile: Profile) -> inbox.GmailCodes | None:
