@@ -920,3 +920,29 @@ def test_a_lone_box_that_states_a_fact_is_not_ticked(profile, bank):
     q = F("I certify that I am a U.S. citizen.", "checkboxes", options=["I agree"])
     [a] = run([q], profile, bank, model=FakeLLM(llm_says((0, "I agree", False))))
     assert not a.confident
+
+
+AREAS = ["Frontend Engineer", "Backend Engineer", "Mobile Engineer", "Platform Engineer"]
+
+
+@pytest.mark.parametrize(
+    "which, expected", [("first", "Backend Engineer"), ("second", "Platform Engineer")]
+)
+def test_ranked_interest_questions_follow_the_engineering_focus_order(
+    profile, bank, which, expected
+):
+    profile.preferences.engineering_focus = ["Software Engineering", "Backend", "Platform"]
+    q = F(
+        f"Out of the following four areas, please select your {which} choice of interest.",
+        "select",
+        options=AREAS,
+    )
+    [a] = run([q], profile, bank)
+    assert (a.value, a.source) == (expected, "preferences")
+
+
+def test_a_ranked_choice_past_the_list_goes_to_review(profile, bank):
+    profile.preferences.engineering_focus = ["Backend"]
+    q = F("Please select your second choice of interest.", "select", options=AREAS)
+    [a] = run([q], profile, bank, model=FakeLLM(llm_says((0, "Mobile Engineer", False))))
+    assert not a.confident

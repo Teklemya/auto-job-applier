@@ -201,6 +201,8 @@ def acknowledges_only(label: str) -> bool:
     return bool(_ACKNOWLEDGES.search(label)) and not _STATES_A_FACT.search(label)
 
 
+_ORDINALS = ["first", "second", "third"]
+_ORDINAL_CHOICE = re.compile(r"\b(first|second|third) (choice|preference) of (interest|area|team)")
 _START_WINDOW = re.compile(r"(able|available|can you|could you) (to )?start|start (between|by|in)")
 _IN_OFFICE = re.compile(r"hybrid|in.office|on.?site|office attendance|days a week in")
 _CONSENT = re.compile(r"consent.*(demographic|self identif|survey)|(demographic|survey).*consent")
@@ -247,6 +249,13 @@ def _preference_value(label: str, field: FormField, p: Profile) -> Value | objec
         return pref.demographic_consent
     if yes_no and _IN_OFFICE.search(label) and not _OPEN_ENDED.search(label):
         return pref.in_office_ok
+    if (n := _ORDINAL_CHOICE.search(label)) and field.options and pref.engineering_focus:
+        # "Out of the following areas, select your first (second) choice of interest": your
+        # list in order, counting only the ones this form offers.
+        offered = [m for v in pref.engineering_focus if (m := match_option(v, field))]
+        offered = list(dict.fromkeys(offered))
+        nth = _ORDINALS.index(n[1])
+        return offered[nth] if nth < len(offered) else None
     if re.search(
         r"(type|area|kind|field) of (software )?engineering|engineering (area|focus)", label
     ):
