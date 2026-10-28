@@ -424,6 +424,36 @@ def _negated(text: str) -> bool:
     return bool(set(normalize(re.sub(r"\bnon-", "non", text, flags=re.I)).split()) & _NEGATIONS)
 
 
+_NUMBER = re.compile(r"\d+(\.\d+)?")
+_SCALE = re.compile(r"\(?\b(out of|on a|of) \d+(\.\d+)?( scale)?\)?", re.I)
+
+
+def _number_option(n: float, options: list[str]) -> str | None:
+    """A number (GPA 3.8, 2 years) among range options: "2.8 - 3.0 (out of 4.0)", "3.6 or
+    above", "2.4 or below", "5+". Never a match on shared digits ("3.8" is not "2.8 - 3.0");
+    an option in another unit ("80% or above") is skipped; none or several → None."""
+    hits = []
+    for o in options:
+        text = _SCALE.sub(" ", o).lower()
+        if "%" in text:
+            continue
+        nums = [float(x) for x in re.findall(r"\d+(?:\.\d+)?", text)]
+        if len(nums) == 2:
+            fits = nums[0] <= n <= nums[1]
+        elif len(nums) == 1:
+            if re.search(r"below|less|under|lower|fewer|or earlier|\bmax", text):
+                fits = n <= nums[0]
+            elif re.search(r"above|more|over|higher|greater|\+|or later|\bmin", text):
+                fits = n >= nums[0]
+            else:
+                fits = n == nums[0]
+        else:
+            continue
+        if fits:
+            hits.append(o)
+    return hits[0] if len(hits) == 1 else None
+
+
 def match_option(value: Value, field: FormField) -> str | None:
     """The form's option for `value`, or the text itself for free-text fields."""
     if value is None:
@@ -440,6 +470,8 @@ def match_option(value: Value, field: FormField) -> str | None:
         return value
     if same := same_option(value, field.options):
         return same
+    if _NUMBER.fullmatch(value.strip()):
+        return _number_option(float(value), field.options)
     v = normalize(value)
     if value == DECLINE:
         hits = [o for o in field.options if _DECLINE_OPTION.search(normalize(o))]

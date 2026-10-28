@@ -1154,3 +1154,47 @@ def test_archetype_comes_from_engineering_focus(profile, bank):
     )
     [a] = run([q], profile, bank)
     assert (a.value, a.source) == ("Full Stack", "preferences")
+
+
+GPA_OPTIONS = [
+    "2.4 or below",
+    "2.5 - 2.7 (out of 4.0)",
+    "2.8 - 3.0 (out of 4.0)",
+    "3.1 - 3.3 (out of 4.0)",
+    "3.4 - 3.5 (out of 4.0)",
+    "3.6 or above (out of 4.0)",
+    "80% or above (Canadian Institutions)",
+]
+
+
+@pytest.mark.parametrize(
+    "gpa, expected",
+    [
+        ("3.8", "3.6 or above (out of 4.0)"),
+        ("2.9", "2.8 - 3.0 (out of 4.0)"),
+        ("3.0", "2.8 - 3.0 (out of 4.0)"),
+        ("2.2", "2.4 or below"),
+        ("3.55", None),  # between two ranges: never the nearest guess
+    ],
+)
+def test_gpa_lands_in_the_range_that_holds_it(gpa, expected):
+    field = F("What is your GPA", "select", options=GPA_OPTIONS)
+    assert resolver.match_option(gpa, field) == expected
+
+
+@pytest.mark.parametrize(
+    "years, expected", [("2", "1-2 years"), ("6", "5+ years"), ("0", "Less than 1 year")]
+)
+def test_numbers_match_ranges_not_shared_digits(years, expected):
+    field = F(
+        "Years of experience",
+        "select",
+        options=["Less than 1 year", "1-2 years", "3-4 years", "5+ years"],
+    )
+    assert resolver.match_option(years, field) == expected
+
+
+def test_profile_gpa_is_answered_with_its_range(profile, bank):
+    profile.education[0].gpa = "3.8"
+    [a] = run([F("What is your GPA", "select", options=GPA_OPTIONS)], profile, bank)
+    assert (a.value, a.source) == ("3.6 or above (out of 4.0)", "profile")
