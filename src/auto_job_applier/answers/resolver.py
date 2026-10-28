@@ -237,6 +237,7 @@ _ORDINAL_CHOICE = re.compile(r"\b(first|second|third) (choice|preference) of (in
 _START_WINDOW = re.compile(r"(able|available|can you|could you) (to )?start|start (between|by)")
 _IN_OFFICE = re.compile(r"hybrid|\bin ?office\b|\bon ?site\b|office attendance|days a week in")
 _CONSENT = re.compile(r"consent.*(demographic|self identif|survey)|(demographic|survey).*consent")
+_MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
 _MONTH_YEAR = re.compile(
     r"\b(?:(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.? )?(20\d\d)\b"
 )
@@ -258,8 +259,7 @@ def _window_end(label: str) -> str | None:
     if not found:
         return None
     month, year = found[-1]
-    months = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
-    return f"{year}-{months.index(month) + 1 if month else 12:02d}"
+    return f"{year}-{_MONTHS.index(month) + 1 if month else 12:02d}"
 
 
 def _month(yyyy_mm: str | None) -> list[str] | None:
@@ -269,6 +269,48 @@ def _month(yyyy_mm: str | None) -> list[str] | None:
     m = int(yyyy_mm[5:7])
     name = date(2000, m, 1).strftime("%B")
     return list(dict.fromkeys([name, name[:3], f"{m:02d}", str(m)]))
+
+
+def _months_named(text: str) -> list[tuple[str, str]]:
+    """ "December 2026 - November 2027" → [("2026-12", "2026-12"), ("2027-11", "2027-11")];
+    a bare year covers its twelve months."""
+    spans = []
+    for month, year in _MONTH_YEAR.findall(text.lower()):
+        if month:
+            ym = f"{year}-{_MONTHS.index(month) + 1:02d}"
+            spans.append((ym, ym))
+        else:
+            spans.append((f"{year}-01", f"{year}-12"))
+    return spans
+
+
+def _covers(option: str, ym: str) -> bool:
+    """Whether an option's dates hold the month `ym`: a range "A - B", "after A", "before A",
+    or one month or year."""
+    spans, text = _months_named(option), option.lower()
+    if not spans:
+        return False
+    (first, last), inclusive = spans[0], re.search(r"\bor (later|earlier)\b", text)
+    if re.search(r"\b(after|later)\b", text):
+        return ym >= first if inclusive else ym > last
+    if re.search(r"\b(before|earlier)\b", text):
+        return ym <= last if inclusive else ym < first
+    return spans[0][0] <= ym <= spans[-1][1]
+
+
+def _graduation_option(f: FormField, label: str, p: Profile, today: str) -> str | None:
+    """ "When is your anticipated graduation date?" with options like "I have already graduated",
+    "December 2026 - November 2027": the one option that holds the profile's graduation."""
+    edu = p.education[0] if p.education else None
+    if not (edu and f.options and re.search(r"graduat", label)):
+        return None
+    grad = edu.graduation[:7]
+    if grad <= today[:7]:
+        done = re.compile(r"already graduated|have graduated|graduated already", re.I)
+        hits = [o for o in f.options if done.search(o) and not _months_named(o)]
+    else:
+        hits = [o for o in f.options if _covers(o, grad)]
+    return hits[0] if len(hits) == 1 else None
 
 
 def _preference_value(label: str, field: FormField, p: Profile) -> Value | object:
@@ -297,7 +339,8 @@ def _preference_value(label: str, field: FormField, p: Profile) -> Value | objec
         nth = _ORDINALS.index(n[1])
         return offered[nth] if nth < len(offered) else None
     if re.search(
-        r"(type|area|kind|field) of (software )?engineering|engineering (area|focus)", label
+        r"(type|area|kind|field) of (software )?engineering|engineering (area|focus)|archetype",
+        label,
     ):
         return pref.engineering_focus or None
     if re.search(r"preferred (office|work )?location|office location|which office", label):
@@ -381,6 +424,36 @@ def _negated(text: str) -> bool:
     return bool(set(normalize(re.sub(r"\bnon-", "non", text, flags=re.I)).split()) & _NEGATIONS)
 
 
+_NUMBER = re.compile(r"\d+(\.\d+)?")
+_SCALE = re.compile(r"\(?\b(out of|on a|of) \d+(\.\d+)?( scale)?\)?", re.I)
+
+
+def _number_option(n: float, options: list[str]) -> str | None:
+    """A number (GPA 3.8, 2 years) among range options: "2.8 - 3.0 (out of 4.0)", "3.6 or
+    above", "2.4 or below", "5+". Never a match on shared digits ("3.8" is not "2.8 - 3.0");
+    an option in another unit ("80% or above") is skipped; none or several → None."""
+    hits = []
+    for o in options:
+        text = _SCALE.sub(" ", o).lower()
+        if "%" in text:
+            continue
+        nums = [float(x) for x in re.findall(r"\d+(?:\.\d+)?", text)]
+        if len(nums) == 2:
+            fits = nums[0] <= n <= nums[1]
+        elif len(nums) == 1:
+            if re.search(r"below|less|under|lower|fewer|or earlier|\bmax", text):
+                fits = n <= nums[0]
+            elif re.search(r"above|more|over|higher|greater|\+|or later|\bmin", text):
+                fits = n >= nums[0]
+            else:
+                fits = n == nums[0]
+        else:
+            continue
+        if fits:
+            hits.append(o)
+    return hits[0] if len(hits) == 1 else None
+
+
 def match_option(value: Value, field: FormField) -> str | None:
     """The form's option for `value`, or the text itself for free-text fields."""
     if value is None:
@@ -397,6 +470,8 @@ def match_option(value: Value, field: FormField) -> str | None:
         return value
     if same := same_option(value, field.options):
         return same
+    if _NUMBER.fullmatch(value.strip()):
+        return _number_option(float(value), field.options)
     v = normalize(value)
     if value == DECLINE:
         hits = [o for o in field.options if _DECLINE_OPTION.search(normalize(o))]
@@ -535,6 +610,14 @@ def resolve(
             if re.search(r"resume|\bcv\b", label):
                 results[i] = _answer(f, str(profile.resume_path), "profile")
                 continue
+            # "transcript of your undergraduate studies"; a graduate-school one is not this file
+            if (
+                profile.transcript_path is not None
+                and "transcript" in label
+                and not re.search(r"\bgraduate|master|phd", label)
+            ):
+                results[i] = _answer(f, str(profile.transcript_path), "profile")
+                continue
             if not _LONG_FORM.search(label):
                 results[i] = (
                     _unresolved(f, "file upload not in the profile")
@@ -549,6 +632,9 @@ def resolve(
                 results[i] = _unresolved(f, "needs a written answer")
             else:
                 results[i] = writer(f, job, jd)
+            continue
+        if (option := _graduation_option(f, label, profile, today())) is not None:
+            results[i] = _answer(f, option, "profile", "the option holding your graduation date")
             continue
         if (ans := _from_known_sources(f, label, profile, bank)) is not None:
             results[i] = ans

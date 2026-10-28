@@ -279,10 +279,14 @@ class Profile(_Strict):
     settings: Settings = Settings()
     llm: LLMSettings = LLMSettings()
     resume_path: Path
+    # An unofficial transcript (PDF), uploaded where a form asks for an undergraduate one.
+    transcript_path: Path | None = None
 
-    @field_validator("resume_path")
+    @field_validator("resume_path", "transcript_path")
     @classmethod
-    def _resume_exists(cls, v: Path) -> Path:
+    def _file_exists(cls, v: Path | None) -> Path | None:
+        if v is None:
+            return None
         v = v.expanduser()
         if not v.is_absolute():  # relative paths live next to profile.yaml
             v = paths.home() / v

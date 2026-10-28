@@ -102,3 +102,4 @@ settings:
 #   fit_batch_size: 8
 
 resume_path: resume.pdf  # relative paths live next to this file
+# transcript_path: transcript.pdf  # uploaded where a form asks for your (undergraduate) transcript

@@ -1103,3 +1103,114 @@ def test_a_note_alone_does_not_make_a_worked_here_question(profile, bank):
     q = F("Willing to relocate to work at Acme? (Former employees: apply internally.)")
     [a] = run([q], profile, bank, model=FakeLLM(llm_says((0, "Yes", True))))
     assert a.source != "profile"
+
+
+GRAD_OPTIONS = [
+    "I have already graduated",
+    "December 2026 - November 2027",
+    "I graduate after December 2027",
+]
+
+
+@pytest.mark.parametrize(
+    "graduation, expected",
+    [
+        ("2026-05", "I have already graduated"),
+        ("2027-05", "December 2026 - November 2027"),
+        ("2026-12", "December 2026 - November 2027"),
+        ("2028-05", "I graduate after December 2027"),
+    ],
+)
+def test_graduation_date_picks_the_option_that_holds_it(profile, bank, graduation, expected):
+    profile.education[0].graduation = graduation
+    q = F("When is your anticipated graduation date?", "select", options=GRAD_OPTIONS)
+    [a] = resolver.resolve(
+        [q], profile, bank=bank, llm=FakeLLM(), job=JOB, jd=JD, today=lambda: "2026-10-28"
+    )
+    assert (a.value, a.source) == (expected, "profile")
+
+
+def test_graduation_between_the_options_is_not_guessed(profile, bank):
+    profile.education[0].graduation = "2027-06"
+    q = F("Expected graduation?", "select", options=["Spring 2026", "May 2028"])
+    [a] = resolver.resolve(
+        [q],
+        profile,
+        bank=bank,
+        llm=FakeLLM(llm_says((0, "May 2028", False))),
+        job=JOB,
+        jd=JD,
+        today=lambda: "2026-10-28",
+    )
+    assert not a.confident
+
+
+def test_archetype_comes_from_engineering_focus(profile, bank):
+    profile.preferences.engineering_focus = ["Backend", "Full Stack"]
+    q = F(
+        "What archetype are you most closely aligned with?",
+        "select",
+        options=["Full Stack", "Big Data", "Machine Learning"],
+    )
+    [a] = run([q], profile, bank)
+    assert (a.value, a.source) == ("Full Stack", "preferences")
+
+
+GPA_OPTIONS = [
+    "2.4 or below",
+    "2.5 - 2.7 (out of 4.0)",
+    "2.8 - 3.0 (out of 4.0)",
+    "3.1 - 3.3 (out of 4.0)",
+    "3.4 - 3.5 (out of 4.0)",
+    "3.6 or above (out of 4.0)",
+    "80% or above (Canadian Institutions)",
+]
+
+
+@pytest.mark.parametrize(
+    "gpa, expected",
+    [
+        ("3.8", "3.6 or above (out of 4.0)"),
+        ("2.9", "2.8 - 3.0 (out of 4.0)"),
+        ("3.0", "2.8 - 3.0 (out of 4.0)"),
+        ("2.2", "2.4 or below"),
+        ("3.55", None),  # between two ranges: never the nearest guess
+    ],
+)
+def test_gpa_lands_in_the_range_that_holds_it(gpa, expected):
+    field = F("What is your GPA", "select", options=GPA_OPTIONS)
+    assert resolver.match_option(gpa, field) == expected
+
+
+@pytest.mark.parametrize(
+    "years, expected", [("2", "1-2 years"), ("6", "5+ years"), ("0", "Less than 1 year")]
+)
+def test_numbers_match_ranges_not_shared_digits(years, expected):
+    field = F(
+        "Years of experience",
+        "select",
+        options=["Less than 1 year", "1-2 years", "3-4 years", "5+ years"],
+    )
+    assert resolver.match_option(years, field) == expected
+
+
+def test_profile_gpa_is_answered_with_its_range(profile, bank):
+    profile.education[0].gpa = "3.8"
+    [a] = run([F("What is your GPA", "select", options=GPA_OPTIONS)], profile, bank)
+    assert (a.value, a.source) == ("3.6 or above (out of 4.0)", "profile")
+
+
+UNDERGRAD = "Please provide a recent transcript of your undergraduate studies."
+GRAD = "Please provide a recent transcript of your graduate studies (if applicable)"
+
+
+def test_the_transcript_is_uploaded_like_the_resume(profile, bank, tmp_path):
+    profile.transcript_path = tmp_path / "transcript.pdf"
+    up, grad = run([F(UNDERGRAD, "file"), F(GRAD, "file", required=False)], profile, bank)
+    assert (up.value, up.source) == (str(tmp_path / "transcript.pdf"), "profile")
+    assert grad.value is None  # no graduate studies: the optional box stays empty
+
+
+def test_without_a_transcript_the_upload_waits_for_the_owner(profile, bank):
+    [a] = run([F(UNDERGRAD, "file")], profile, bank)
+    assert not a.confident
