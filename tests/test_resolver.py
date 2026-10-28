@@ -1198,3 +1198,19 @@ def test_profile_gpa_is_answered_with_its_range(profile, bank):
     profile.education[0].gpa = "3.8"
     [a] = run([F("What is your GPA", "select", options=GPA_OPTIONS)], profile, bank)
     assert (a.value, a.source) == ("3.6 or above (out of 4.0)", "profile")
+
+
+UNDERGRAD = "Please provide a recent transcript of your undergraduate studies."
+GRAD = "Please provide a recent transcript of your graduate studies (if applicable)"
+
+
+def test_the_transcript_is_uploaded_like_the_resume(profile, bank, tmp_path):
+    profile.transcript_path = tmp_path / "transcript.pdf"
+    up, grad = run([F(UNDERGRAD, "file"), F(GRAD, "file", required=False)], profile, bank)
+    assert (up.value, up.source) == (str(tmp_path / "transcript.pdf"), "profile")
+    assert grad.value is None  # no graduate studies: the optional box stays empty
+
+
+def test_without_a_transcript_the_upload_waits_for_the_owner(profile, bank):
+    [a] = run([F(UNDERGRAD, "file")], profile, bank)
+    assert not a.confident

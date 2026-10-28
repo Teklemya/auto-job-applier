@@ -610,6 +610,14 @@ def resolve(
             if re.search(r"resume|\bcv\b", label):
                 results[i] = _answer(f, str(profile.resume_path), "profile")
                 continue
+            # "transcript of your undergraduate studies"; a graduate-school one is not this file
+            if (
+                profile.transcript_path is not None
+                and "transcript" in label
+                and not re.search(r"\bgraduate|master|phd", label)
+            ):
+                results[i] = _answer(f, str(profile.transcript_path), "profile")
+                continue
             if not _LONG_FORM.search(label):
                 results[i] = (
                     _unresolved(f, "file upload not in the profile")

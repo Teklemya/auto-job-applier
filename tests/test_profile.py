@@ -131,3 +131,16 @@ def test_a_date_that_is_not_a_date_is_a_clear_error(example_profile_data, write_
     example_profile_data["education"][0]["graduation"] = "spring 2026"
     with pytest.raises(ProfileError, match="not a date"):
         load_profile(write_profile(example_profile_data))
+
+
+def test_a_transcript_path_must_exist_and_lives_next_to_the_profile(
+    example_profile_data, write_profile, aja_home
+):
+    example_profile_data["transcript_path"] = "transcript.pdf"
+    with pytest.raises(ProfileError, match="transcript_path"):
+        load_profile(write_profile(example_profile_data))
+    aja_home.mkdir(parents=True, exist_ok=True)
+    (aja_home / "transcript.pdf").write_bytes(b"%PDF-1.4")
+    assert load_profile(write_profile(example_profile_data)).transcript_path == (
+        aja_home / "transcript.pdf"
+    )

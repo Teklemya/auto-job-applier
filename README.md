@@ -210,7 +210,7 @@ Its sections:
 | `preferences` | Start date, salary, in-office, engineering focus, office locations, consent and acknowledgement ticking |
 | `targeting` | Which locations and roles to collect |
 | `settings` | `submit` (live mode), `daily_submit_cap`, `fit_skip` |
-| `resume_path` | Your resume, relative to the profile |
+| `resume_path`, `transcript_path` | Your resume, and optionally an unofficial transcript for forms that ask for one; relative to the profile |
 
 ## Safety: shadow mode and the daily cap
 
