@@ -1103,3 +1103,54 @@ def test_a_note_alone_does_not_make_a_worked_here_question(profile, bank):
     q = F("Willing to relocate to work at Acme? (Former employees: apply internally.)")
     [a] = run([q], profile, bank, model=FakeLLM(llm_says((0, "Yes", True))))
     assert a.source != "profile"
+
+
+GRAD_OPTIONS = [
+    "I have already graduated",
+    "December 2026 - November 2027",
+    "I graduate after December 2027",
+]
+
+
+@pytest.mark.parametrize(
+    "graduation, expected",
+    [
+        ("2026-05", "I have already graduated"),
+        ("2027-05", "December 2026 - November 2027"),
+        ("2026-12", "December 2026 - November 2027"),
+        ("2028-05", "I graduate after December 2027"),
+    ],
+)
+def test_graduation_date_picks_the_option_that_holds_it(profile, bank, graduation, expected):
+    profile.education[0].graduation = graduation
+    q = F("When is your anticipated graduation date?", "select", options=GRAD_OPTIONS)
+    [a] = resolver.resolve(
+        [q], profile, bank=bank, llm=FakeLLM(), job=JOB, jd=JD, today=lambda: "2026-10-28"
+    )
+    assert (a.value, a.source) == (expected, "profile")
+
+
+def test_graduation_between_the_options_is_not_guessed(profile, bank):
+    profile.education[0].graduation = "2027-06"
+    q = F("Expected graduation?", "select", options=["Spring 2026", "May 2028"])
+    [a] = resolver.resolve(
+        [q],
+        profile,
+        bank=bank,
+        llm=FakeLLM(llm_says((0, "May 2028", False))),
+        job=JOB,
+        jd=JD,
+        today=lambda: "2026-10-28",
+    )
+    assert not a.confident
+
+
+def test_archetype_comes_from_engineering_focus(profile, bank):
+    profile.preferences.engineering_focus = ["Backend", "Full Stack"]
+    q = F(
+        "What archetype are you most closely aligned with?",
+        "select",
+        options=["Full Stack", "Big Data", "Machine Learning"],
+    )
+    [a] = run([q], profile, bank)
+    assert (a.value, a.source) == ("Full Stack", "preferences")

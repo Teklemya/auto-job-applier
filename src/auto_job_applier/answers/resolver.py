@@ -237,6 +237,7 @@ _ORDINAL_CHOICE = re.compile(r"\b(first|second|third) (choice|preference) of (in
 _START_WINDOW = re.compile(r"(able|available|can you|could you) (to )?start|start (between|by)")
 _IN_OFFICE = re.compile(r"hybrid|\bin ?office\b|\bon ?site\b|office attendance|days a week in")
 _CONSENT = re.compile(r"consent.*(demographic|self identif|survey)|(demographic|survey).*consent")
+_MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
 _MONTH_YEAR = re.compile(
     r"\b(?:(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.? )?(20\d\d)\b"
 )
@@ -258,8 +259,7 @@ def _window_end(label: str) -> str | None:
     if not found:
         return None
     month, year = found[-1]
-    months = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
-    return f"{year}-{months.index(month) + 1 if month else 12:02d}"
+    return f"{year}-{_MONTHS.index(month) + 1 if month else 12:02d}"
 
 
 def _month(yyyy_mm: str | None) -> list[str] | None:
@@ -269,6 +269,48 @@ def _month(yyyy_mm: str | None) -> list[str] | None:
     m = int(yyyy_mm[5:7])
     name = date(2000, m, 1).strftime("%B")
     return list(dict.fromkeys([name, name[:3], f"{m:02d}", str(m)]))
+
+
+def _months_named(text: str) -> list[tuple[str, str]]:
+    """ "December 2026 - November 2027" → [("2026-12", "2026-12"), ("2027-11", "2027-11")];
+    a bare year covers its twelve months."""
+    spans = []
+    for month, year in _MONTH_YEAR.findall(text.lower()):
+        if month:
+            ym = f"{year}-{_MONTHS.index(month) + 1:02d}"
+            spans.append((ym, ym))
+        else:
+            spans.append((f"{year}-01", f"{year}-12"))
+    return spans
+
+
+def _covers(option: str, ym: str) -> bool:
+    """Whether an option's dates hold the month `ym`: a range "A - B", "after A", "before A",
+    or one month or year."""
+    spans, text = _months_named(option), option.lower()
+    if not spans:
+        return False
+    (first, last), inclusive = spans[0], re.search(r"\bor (later|earlier)\b", text)
+    if re.search(r"\b(after|later)\b", text):
+        return ym >= first if inclusive else ym > last
+    if re.search(r"\b(before|earlier)\b", text):
+        return ym <= last if inclusive else ym < first
+    return spans[0][0] <= ym <= spans[-1][1]
+
+
+def _graduation_option(f: FormField, label: str, p: Profile, today: str) -> str | None:
+    """ "When is your anticipated graduation date?" with options like "I have already graduated",
+    "December 2026 - November 2027": the one option that holds the profile's graduation."""
+    edu = p.education[0] if p.education else None
+    if not (edu and f.options and re.search(r"graduat", label)):
+        return None
+    grad = edu.graduation[:7]
+    if grad <= today[:7]:
+        done = re.compile(r"already graduated|have graduated|graduated already", re.I)
+        hits = [o for o in f.options if done.search(o) and not _months_named(o)]
+    else:
+        hits = [o for o in f.options if _covers(o, grad)]
+    return hits[0] if len(hits) == 1 else None
 
 
 def _preference_value(label: str, field: FormField, p: Profile) -> Value | object:
@@ -297,7 +339,8 @@ def _preference_value(label: str, field: FormField, p: Profile) -> Value | objec
         nth = _ORDINALS.index(n[1])
         return offered[nth] if nth < len(offered) else None
     if re.search(
-        r"(type|area|kind|field) of (software )?engineering|engineering (area|focus)", label
+        r"(type|area|kind|field) of (software )?engineering|engineering (area|focus)|archetype",
+        label,
     ):
         return pref.engineering_focus or None
     if re.search(r"preferred (office|work )?location|office location|which office", label):
@@ -549,6 +592,9 @@ def resolve(
                 results[i] = _unresolved(f, "needs a written answer")
             else:
                 results[i] = writer(f, job, jd)
+            continue
+        if (option := _graduation_option(f, label, profile, today())) is not None:
+            results[i] = _answer(f, option, "profile", "the option holding your graduation date")
             continue
         if (ans := _from_known_sources(f, label, profile, bank)) is not None:
             results[i] = ans
